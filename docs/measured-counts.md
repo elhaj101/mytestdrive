@@ -1,13 +1,33 @@
 # Measured counts — Phase 1 gate
 
 Real numbers from actual pipeline runs, replacing the extrapolated figures the research note
-carried. Anchor `52.5304357, 13.2144591`, radius 5000m.
+carried. Anchor `52.5304357, 13.2144591`, radius 5000m. All measured 2026-09-07.
 
-Status: **OSM measured 2026-09-07. WFS and LoD2 still to run.**
+**Gate result: TRIPPED on building count.** See "Gate assessment" below.
 
 ---
 
-## OSM road network — measured 2026-09-07
+## Summary against the note's baselines
+
+| Metric | Note said | Measured | Verdict |
+|---|---|---|---|
+| Traffic signal nodes (OSM) | 642 | **642** | exact |
+| Traffic signs (WFS, bbox) | 16,342 | **16,342** | exact |
+| LoD2 candidate tiles | 101 | **101** | exact |
+| LoD2 tiles present | 98 | **98** | exact |
+| Missing tiles | 3, named | **same 3, same names** | exact |
+| Centre tile | `LoD2_378_5821` | **`LoD2_378_5821`** | exact |
+| Raw drivable ways | 12,598 | 12,591 as `drivable+service` | reconciled, see below |
+| **Buildings** | **~46,700** *(extrapolated)* | **69,538** | **+48.9% — gate tripped** |
+| Graph edges | ~6,260 *(extrapolated)* | not yet measured | Phase 3 |
+| Junctions | ~5,500 *(extrapolated)* | not yet measured | Phase 3 |
+
+Every *measured* baseline reproduced exactly. Both figures that missed were **extrapolations**,
+which is precisely what the gate existed to catch.
+
+---
+
+## OSM road network
 
 | Highway classes | Ways |
 |---|---|
@@ -26,72 +46,123 @@ Status: **OSM measured 2026-09-07. WFS and LoD2 still to run.**
 
 | Nodes | Count |
 |---|---|
-| Traffic signals | **642** |
+| Traffic signals | **642** (exact baseline match) |
 | Level crossings | 68 |
 | Give way | 66 |
 | Stop | 26 |
 
-## Reconciling the note's "12,598 ways"
+### Reconciling the note's "12,598 ways"
 
-**Traffic signals came back at 642 — an exact match to the note's baseline.** That confirms the
-anchor and radius are correct, so any way-count difference is a filter-definition difference, not
-a geometry error.
+Signals matching exactly at 642 confirms the anchor and radius, so the way-count gap is a
+filter-definition difference, not a geometry error.
 
-| Filter | Count | vs note's 12,598 |
+| Filter | Count | vs 12,598 |
 |---|---|---|
 | drivable only | 6,001 | −6,597 |
 | **drivable + `service`** | **12,591** | **−7** |
 | drivable + service + track | 13,024 | +426 |
-| drivable + service + pedestrian | 12,667 | +69 |
 
-**Conclusion: the note's 12,598 figure was `drivable + service`.** The 7-way gap is a couple of
-days of OSM edits. Nothing is wrong with either number — they measure different things.
+**The note's 12,598 was `drivable + service`.** The 7-way gap is a few days of OSM edits.
 
-### Consequence — the headline figure overstates the street network by ~2x
+**Consequence — the headline figure overstates the drivable network by ~2x.** `service` ways are
+parking aisles, driveways and alleys. They are not streets a driving exam is conducted on and the
+player must not drive them. The drivable network is **6,001**, not 12,598.
 
-`service` ways are parking aisles, driveways and alleys. **They are not streets a driving exam is
-conducted on, and the player must not be able to drive them.** The drivable network for this app
-is the **6,001** figure, not 12,598.
-
-Service ways are still worth keeping in the data, but as *rule context* rather than drivable
-edges: the standing rule "leaving a property or driveway always yields" needs to know a driveway
-is there. So: keep them, flag them `drivable: false`, exclude them from the road graph the player
-traverses.
-
-This also casts doubt on the derived estimates. The old 2.2km baseline of "3,402 raw ways" was
-almost certainly `drivable + service` too — the vault's own recorded Overpass query returned
-**1,569 segments** at 2.2km under the drivable-only filter. So the extrapolated **~6,260 graph
-edges and ~5,500 junctions** were scaled from a service-inflated base and are likely
-substantially too high for the drivable-only network. Phase 3 must measure them directly.
-
-### Filter to use from here
-
-```
-highway ~ ^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street)
-area  != yes
-```
-
-Note the regex is intentionally unanchored at the end, so `*_link` classes are included — they are
-real drivable connections. `service`, `track` and `pedestrian` are excluded from the drivable
-graph.
+Keep service ways in the data but flagged `drivable: false`, excluded from the traversable graph.
+The standing rule "leaving a property or driveway always yields" needs to know a driveway is
+there, which is the only reason they matter.
 
 ---
 
-## Overpass access gotcha — found 2026-09-07
+## WFS Straßenbefahrung
 
-**Overpass returns HTTP 406 to the default `python-requests` user agent.** Sending any custom
-`User-Agent` header fixes it. This is separate from rate-limiting: 429 and 504 also occur
-regularly on the public endpoint and are handled with backoff plus the kumi.systems mirror. Note
-the mirror was itself rate-limiting on 2026-09-07 while the main endpoint worked — try both.
+| Layer | In bbox | In 5km circle |
+|---|---|---|
+| `aa_verkehrszeichen` (signs) | **16,342** | 13,253 |
+| `at_mast_lsa` (signal masts) | 1,793 | 1,508 |
+| `cm_fahrbahn` (roadway polygons) | 4,927 | 3,935 |
+| `be_fahrbahnmarkierunglinie` (lane markings) | 19,530 | 14,977 |
+
+The note's 16,342 was measured on the **bbox**. A bbox around a 5km circle holds ~27% more area,
+so the circle figure being lower is correct, not a bug. Both are recorded so neither gets
+mistaken for the other later.
+
+`at_mast_lsa` was not in the original plan but is worth having: 1,508 signal masts in-circle
+cross-check against OSM's 642 signal nodes, which is exactly the "OSM signal with no matching WFS
+mast" conflict case the rule engine has to detect. (The counts differ by design — a junction has
+several masts but one OSM node.)
+
+### Axis-order trap — reproduced exactly
+
+| Bbox form | numberMatched |
+|---|---|
+| `lat,lon` + `urn:ogc:def:crs:EPSG::4326` | **16,342** |
+| `lon,lat` + same CRS | **0**, HTTP 200, no error |
+| native `EPSG::25833` easting,northing | 15,833 |
+
+Confirmed: wrong axis order returns a silent zero, not an error. The service's native CRS is
+**25833**, not 4326.
 
 ---
 
-## Still to measure
+## LoD2 buildings
 
-- [ ] WFS traffic signs — note baseline **16,342**, measured on a *bbox*, not a circle. A bbox
-      around a 5km circle is ~27% more area, so a circle-clipped count will legitimately come in
-      lower. Record both, and compare each against the geometry it was originally measured on.
-- [ ] LoD2 tiles present — note baseline **98 of 101 candidate**
-- [ ] Real building count — extrapolation said ~46,700
-- [ ] Real graph edge count after junction-splitting — extrapolation said ~6,260
-- [ ] Real junction count — extrapolation said ~5,500
+- Sub-feed lists **925** tiles (as documented — the top-level feed only points at `0.atom`)
+- Candidate tiles overlapping the circle: **101**
+- Present in feed: **98**
+- Missing: `LoD2_378_5816`, `LoD2_379_5816`, `LoD2_379_5817` — all south/south-east over the
+  Havel/Wannsee. Confirms the "no buildings on open water" reading, not a coverage failure
+- Centre tile `LoD2_378_5821` — matches
+- **Raw download: 181.8 MB zipped**
+- **Uncompressed CityGML: 1,572 MB**
+- **Buildings: 69,538**
+
+Densest tiles: `376_5819` (2,328), `375_5821` (2,300), `374_5822` (2,265).
+Emptiest: `375_5818` (1), `380_5816` (1), `374_5818` (2) — the water-adjacent edge.
+
+### Boundary note
+
+A strict circle test gives 100 candidates / 97 present. `LoD2_381_5816` misses by **6 metres**.
+The pipeline applies a 50m buffer so boundary buildings are not clipped, which yields 101/98 and
+matches the recorded figures.
+
+---
+
+## Gate assessment
+
+### Buildings: +48.9% over extrapolation
+
+69,538 measured against ~46,700 extrapolated. The 3.7–3.8x way/sign scale factor does **not**
+carry over to buildings — reasonable in hindsight, since the outer ring loses road density faster
+than it loses housing density.
+
+**Payload impact: still a non-issue.** The old build simplified 12,402 buildings to ~1MB
+(~84 bytes/building). At the same ratio 69,538 buildings is **~5.6MB** — above the note's
+3.3–3.9MB estimate, still trivial for a desktop app. The note's conclusion that tile-streaming
+isn't needed *for memory reasons* survives.
+
+**Draw-call impact: this is the real finding.** The design commits to buildings as *discrete,
+addressable objects* (Path A's advantage, and what the optional occlusion-fade depends on). At
+69,538, one `Mesh` per building means ~69k draw calls, which will not hold 60fps. These two
+requirements now collide, and the resolution has to be chosen before Phase 5, not during it:
+
+- Batch buildings into **per-chunk merged geometry**, preserving per-building identity as a
+  vertex attribute (building id), so a specific building is still addressable for fade/highlight
+  via shader-side alpha or by splitting only the handful of buildings actually being faded.
+- This keeps Path A's per-building addressability without paying per-building draw calls, and it
+  fits the graph-predictive chunking already agreed.
+
+**Processing impact:** 1.57 GB of uncompressed CityGML means Phase 2 must parse **streaming**
+(iterative, per-tile, releasing as it goes), not load-all-into-memory.
+
+### Edges and junctions: not yet measured, but suspect
+
+~6,260 edges / ~5,500 junctions were scaled from the **service-inflated** way count. Since the
+drivable network is 6,001 ways rather than 12,591, both are likely substantially too high for the
+traversable graph. Phase 3 measures them directly.
+
+### Verdict
+
+Nothing here invalidates the stack decision or Path A. Two concrete changes land in the plan:
+per-chunk batched geometry with per-building ids (Phase 2/5), and streaming CityGML parsing
+(Phase 2). Proceed.
