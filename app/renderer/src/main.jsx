@@ -160,19 +160,21 @@ function App() {
     sceneRef.current?.loadForEdges([edge, ...choices]);
   }
 
-  if (state.loading) return <main className="loading">Loading the Spandau driving world<span>Building the first candidate streets...</span></main>;
-  if (state.error) return <main className="loading error">Could not start the world<span>{state.error}</span></main>;
   const { current, choices, rule } = state;
   return <main className="app-shell">
     <canvas ref={canvasRef} className="world-canvas" />
-    <header className="topbar"><div><span className="eyebrow">MYTESTDRIVE / SPANDAU</span><h1>Free roam</h1></div><div className="status"><span className="status-dot" /> LIVE WORLD <strong>{state.graph.edges.length.toLocaleString('de-DE')} edges</strong></div></header>
-    <aside className="panel">
-      <div className="panel-heading"><span className="eyebrow">CURRENT APPROACH</span><h2>{current.name || 'Unnamed street'}</h2><p>{current.highway} · {Math.round(current.length_m)} m ahead</p></div>
-      <section className={`rule ${rule?.scored ? 'scored' : 'hint'}`}><div className="rule-kicker">{rule?.scored ? 'SCORED RULE' : 'HINT ONLY'}</div><strong>{rule?.label || 'Continue with care'}</strong>{rule?.conflicts?.length ? <p>{rule.conflicts.length} source conflict{rule.conflicts.length === 1 ? '' : 's'} · not scored</p> : <p>{rule?.street || current.name || 'Road priority'}</p>}</section>
-      <div className="choice-label"><span className="eyebrow">NEXT JUNCTION</span><span>Choose your line</span></div>
-      <div className="choices">{turns.map((turn) => { const edge = choices.find((candidate) => candidate.turn === turn); return <button key={turn} className="choice" disabled={!edge} onClick={() => choose(edge)}><span className="turn-arrow">{turn === 'left' ? '↙' : turn === 'right' ? '↘' : '↓'}</span><span><b>{turn}</b><small>{edge?.name || (edge ? 'Unnamed street' : 'No route')}</small></span></button>; })}</div>
-      <footer className="panel-footer"><span>RAIL-LOCKED CAMERA</span><span>DATA-CONFIRMED RULES</span></footer>
-    </aside>
+    {state.loading && <div className="loading-overlay">Loading the Spandau driving world<span>Building the first candidate streets...</span></div>}
+    {state.error && <div className="loading-overlay error">Could not start the world<span>{state.error}</span></div>}
+    {!state.loading && !state.error && <>
+      <header className="topbar"><div><span className="eyebrow">MYTESTDRIVE / SPANDAU</span><h1>Free roam</h1></div><div className="status"><span className="status-dot" /> LIVE WORLD <strong>{state.graph.edges.length.toLocaleString('de-DE')} edges</strong></div></header>
+      <aside className="panel">
+        <div className="panel-heading"><span className="eyebrow">CURRENT APPROACH</span><h2>{current.name || 'Unnamed street'}</h2><p>{current.highway} · {Math.round(current.length_m)} m ahead</p></div>
+        <section className={`rule ${rule?.scored ? 'scored' : 'hint'}`}><div className="rule-kicker">{rule?.scored ? 'SCORED RULE' : 'HINT ONLY'}</div><strong>{rule?.label || 'Continue with care'}</strong>{rule?.conflicts?.length ? <p>{rule.conflicts.length} source conflict{rule.conflicts.length === 1 ? '' : 's'} · not scored</p> : <p>{rule?.street || current.name || 'Road priority'}</p>}</section>
+        <div className="choice-label"><span className="eyebrow">NEXT JUNCTION</span><span>Choose your line</span></div>
+        <div className="choices">{turns.map((turn) => { const edge = choices.find((candidate) => candidate.turn === turn); return <button key={turn} className="choice" disabled={!edge} onClick={() => choose(edge)}><span className="turn-arrow">{turn === 'left' ? '↙' : turn === 'right' ? '↘' : '↓'}</span><span><b>{turn}</b><small>{edge?.name || (edge ? 'Unnamed street' : 'No route')}</small></span></button>; })}</div>
+        <footer className="panel-footer"><span>RAIL-LOCKED CAMERA</span><span>DATA-CONFIRMED RULES</span></footer>
+      </aside>
+    </>}
   </main>;
 }
 

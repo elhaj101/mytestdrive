@@ -31,7 +31,7 @@ h1 { margin-top: 6px; font-size: 26px; letter-spacing: -.02em; font-weight: 600;
 .choice b { font-size: 14px; font-weight: 500; }
 .choice small { margin-top: 3px; color: #9eafa8; font-size: 11px; white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .panel-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 26px; color: #73827e; }
-.loading { display: grid; place-content: center; gap: 12px; height: 100%; padding: 24px; color: #f2f0e8; background: radial-gradient(circle at 70% 20%, #274344, #0d1112 60%); font-size: 25px; letter-spacing: -.03em; }
+.loading-overlay { position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; gap: 12px; padding: 24px; color: #f2f0e8; background: radial-gradient(circle at 70% 20%, #274344, #0d1112 60%); font-size: 25px; letter-spacing: -.03em; }
 .loading span { color: #9caeaa; font: 12px 'DM Mono', monospace; letter-spacing: .04em; }
 .error { color: #f0b38c; }
 @media (max-width: 760px) { .topbar { padding: 20px; } .status { display: none; } .panel { top: auto; right: 16px; bottom: 16px; left: 16px; width: auto; padding: 19px; } .panel-heading h2 { font-size: 23px; } .rule { margin: 17px 0; padding: 13px; } .panel-footer { margin-top: 16px; } }
