@@ -97,7 +97,13 @@ attribute.** Addressability is preserved (shader-side alpha for highlight/fade, 
 only the handful of buildings actually being faded) without paying per-building draw calls. This
 fits the graph-predictive chunking already agreed.
 
-Payload itself is a non-issue: ~5.6MB simplified, at the old build's ~84 bytes/building ratio.
+Payload, now built and measured: **56.3 MB** of glTF across 369 chunks — not the ~5.6MB earlier
+estimated. That estimate applied the old build's ~84 bytes/building ratio, which came from
+footprint+height prisms (Path B). Real LoD2 solids run ~850 bytes/building.
+
+It makes no practical difference, because that is a disk figure and the renderer holds only a few
+chunks at once: a generous 25-chunk window is **3.8 MB / 203k triangles**, and a realistic
+street-level working set of 9 chunks is under 2 MB.
 
 ## Data sources
 
@@ -136,6 +142,20 @@ the mirror if it happens: `overpass.kumi.systems/api/interpreter`. Note that on 
 `citygml-tools` targets 2.0/3.0 and needs a Java runtime that isn't installed here — so the
 pipeline parses the GML directly with streaming `lxml.etree.iterparse`, which the 1.57 GB
 uncompressed volume requires in any case.
+
+**1 in 5 buildings keeps its geometry in `bldg:consistsOfBuildingPart`, not in its own
+`bldg:boundedBy`.** Reading direct children only silently drops them — the first full parse
+returned 55,574 of 69,538 buildings with no error of any kind. Descend for surface elements, and
+always assert the parsed count against the raw `<bldg:Building` count.
+
+**Three.js `GLTFLoader` lowercases custom vertex attributes.** `_BUILDING` in the glTF becomes
+`_building` on the geometry. Reading the original name gives `undefined` and throws inside the
+load callback, which surfaces as no console error and no failed request — just a loader that never
+finishes.
+
+**A 0×0 canvas renders black with no error.** `innerWidth`/`innerHeight` can still be 0 when a
+module script first runs; `renderer.setSize(0, 0)` then fails completely silently. Size from
+`clientWidth`/`clientHeight` with a fallback and re-check in the render loop.
 
 **Rules resolve per approach leg, not per junction.** "Junction X is rechts-vor-links" breaks
 wherever a Vorfahrtstraße crosses a residential street — two legs signposted, two not, at the same

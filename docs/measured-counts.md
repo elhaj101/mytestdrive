@@ -128,6 +128,67 @@ matches the recorded figures.
 
 ---
 
+## Phase 2 — geometry built and visually verified
+
+| Metric | Value |
+|---|---|
+| Buildings parsed from CityGML | **69,538** (0 skipped — exact match to the raw count) |
+| Source polygons | 1,095,288 (wall 801,310 / roof 189,981 / ground 103,997) |
+| Polygons with holes (courtyards) | 782 |
+| Triangles after triangulation | **2,833,272** |
+| Vertices after per-chunk dedup | 1,546,028 (from 5,022,438 ring points, 3.2x) |
+| Chunks (500m grid) | **369** |
+| **Total glTF on disk** | **56.3 MB** |
+| Mean per chunk | 188 buildings, 156 KB, 7,678 triangles |
+| Largest chunk | 591 KB, 414 buildings, 29,655 triangles |
+| Parse time / build time | 100s / 199s (peak RSS 833 MB) |
+
+### Payload estimate corrected: 5.6 MB → 56.3 MB
+
+The note's ~3.9MB, and my own revised ~5.6MB, both derived from the old build's
+**~84 bytes/building** ratio. That ratio came from *footprint+height prisms* — Path B geometry.
+Real LoD2 solids average 15.8 polygons per building, so the true figure is **~850 bytes/building**,
+10x higher.
+
+**This changes nothing that matters.** What the renderer holds at once is a handful of chunks, not
+the whole city:
+
+- 25 chunks (a 2.5km × 2.5km window, far more than street-level view distance needs) =
+  **3.8 MB and 203,438 triangles**
+- A realistic street-level working set of 9 chunks is well under 2 MB
+
+56.3 MB is a disk figure, not a memory figure. Both are trivial for a desktop app.
+
+### Visual verification — Path A confirmed
+
+Rendered through Three.js `GLTFLoader` in `tools/preview_chunk.html` (25 chunks, 3,802 buildings):
+
+- **Roofs are real roof shapes.** Gabled and hipped roofs show clear ridge lines at close range;
+  large commercial buildings are correctly flat. Roof type codes in the source confirm it —
+  2100 (pent), 3100 (gable), 5000 (hipped), 1000 (flat), with up to 19 roof polygons and 4.7m of
+  vertical spread on one building. **If Path A had silently degraded to extrusion, every roof
+  would be flat. They are not.**
+- **Per-building addressability survives the merge.** Tinting by the `_BUILDING` vertex attribute
+  gives every building its own colour inside a single merged chunk mesh — which is exactly the
+  property the occlusion-fade and landmark-cue features depend on, at one draw call per chunk
+  instead of 69,538.
+
+### Two failures worth remembering
+
+**CityGML `BuildingPart` nesting cost 20% of the buildings, silently.** Taking
+`bldg:boundedBy` as *direct children* of `bldg:Building` misses any building whose geometry lives
+in `bldg:consistsOfBuildingPart` — 10,459 BuildingParts across the first 20 tiles alone. The first
+full parse returned 55,574 of 69,538 with no error. Fix: descend for surface elements rather than
+taking direct children. The parser now also counts and reports buildings yielding no geometry, so
+a shortfall can never be silent again.
+
+**`GLTFLoader` lowercases custom vertex attributes.** `_BUILDING` in the file arrives as
+`_building` on the geometry. Reading the original name returns `undefined` and throws *inside the
+load callback*, where it surfaces as nothing at all — no console error, no failed request, just a
+loader that never completes.
+
+---
+
 ## Gate assessment
 
 ### Buildings: +48.9% over extrapolation

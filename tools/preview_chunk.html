@@ -1,0 +1,138 @@
+<!doctype html>
+<title>MyTestDrive — chunk preview</title>
+<style>
+  body { margin: 0; background: #10131a; color: #cfd6e4; font: 13px system-ui, sans-serif; }
+  #hud { position: fixed; top: 10px; left: 12px; z-index: 10; line-height: 1.6; }
+  button { background: #232a38; color: #cfd6e4; border: 1px solid #3a4459;
+           padding: 5px 10px; margin-right: 6px; border-radius: 4px; cursor: pointer; }
+  #stats { margin-top: 8px; opacity: .75; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+<div id="hud">
+  <button onclick="view('street')">street level</button>
+  <button onclick="view('roofs')">roof view</button>
+  <button onclick="view('over')">overview</button>
+  <div id="stats">loading…</div>
+</div>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const RADIUS = 2, CHUNK = 500;
+const SPAWN = { x: -73.87, y: 37.64, heading: -117.0 };
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x10131a);
+scene.fog = new THREE.Fog(0x10131a, 400, 2200);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 6000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// innerWidth/innerHeight can still be 0 when this module first runs, which
+// silently produces a 0x0 canvas and a black screen with no error anywhere.
+function resize() {
+  const w = innerWidth || document.documentElement.clientWidth || 1200;
+  const h = innerHeight || document.documentElement.clientHeight || 800;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+addEventListener('resize', resize);
+
+scene.add(new THREE.HemisphereLight(0xbdd3ff, 0x2a2a30, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+sun.position.set(-400, -700, 900);
+scene.add(sun);
+
+// Flat per-triangle normals from screen-space derivatives, so roof facets read
+// as facets without storing a normal attribute. Building id tints each solid,
+// proving the _BUILDING attribute survives the merge.
+const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+
+const loader = new GLTFLoader();
+let totalTris = 0, totalBuildings = 0, loaded = 0;
+
+// GLTFLoader lowercases custom attribute names, so _BUILDING arrives as _building.
+function buildingAttr(geometry) {
+  return geometry.getAttribute('_building') || geometry.getAttribute('_BUILDING');
+}
+
+function tint(geometry) {
+  const ids = buildingAttr(geometry);
+  const colors = new Float32Array(ids.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < ids.count; i++) {
+    c.setHSL((ids.getX(i) * 0.191) % 1, 0.28, 0.52 + 0.16 * Math.sin(ids.getX(i)));
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
+const cells = [];
+for (let cx = -RADIUS; cx <= RADIUS; cx++)
+  for (let cy = -RADIUS; cy <= RADIUS; cy++) cells.push([cx, cy]);
+
+const ids = new Set();
+for (const [cx, cy] of cells) {
+  loader.load(`../data/build/buildings/chunk_${cx}_${cy}.glb`, (gltf) => {
+    gltf.scene.traverse((node) => {
+      if (!node.isMesh) return;
+      tint(node.geometry);
+      node.material = material;
+      totalTris += node.geometry.index.count / 3;
+      const a = buildingAttr(node.geometry);
+      for (let i = 0; i < a.count; i++) ids.add(`${cx}_${cy}_${a.getX(i)}`);
+    });
+    scene.add(gltf.scene);
+    loaded++;
+    totalBuildings = ids.size;
+    document.getElementById('stats').textContent =
+      `${loaded}/${cells.length} chunks · ${totalBuildings.toLocaleString()} buildings · ` +
+      `${totalTris.toLocaleString()} triangles`;
+  }, undefined, () => { loaded++; });
+}
+
+// Ground plane so buildings do not float in a void.
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(6000, 6000),
+  new THREE.MeshLambertMaterial({ color: 0x1a1f2b })
+);
+ground.position.z = 32;
+scene.add(ground);
+
+window.view = (mode) => {
+  const rad = SPAWN.heading * Math.PI / 180;
+  if (mode === 'street') {
+    camera.position.set(SPAWN.x, SPAWN.y, 34.6);
+    camera.up.set(0, 0, 1);
+    camera.lookAt(SPAWN.x + Math.cos(rad) * 100, SPAWN.y + Math.sin(rad) * 100, 36);
+  } else if (mode === 'roofs') {
+    camera.position.set(SPAWN.x - 260, SPAWN.y - 260, 150);
+    camera.up.set(0, 0, 1);
+    camera.lookAt(SPAWN.x + 60, SPAWN.y + 60, 40);
+  } else {
+    camera.position.set(SPAWN.x - 900, SPAWN.y - 900, 700);
+    camera.up.set(0, 0, 1);
+    camera.lookAt(SPAWN.x, SPAWN.y, 40);
+  }
+};
+view('roofs');
+
+Object.assign(window, { scene, camera, renderer, THREE });
+
+(function loop() {
+  requestAnimationFrame(loop);
+  const canvas = renderer.domElement;
+  if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) resize();
+  renderer.render(scene, camera);
+})();
+</script>

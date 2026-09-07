@@ -84,7 +84,8 @@ Every *measured* baseline reproduced exactly (642 signals, 16,342 signs, 101/98 
 missing tiles by name, same centre tile). Both misses were **extrapolations** — which is what the
 gate was for.
 
-1. **Buildings 69,538, not ~46,700 (+49%).** Payload stays trivial (~5.6MB), but ~69k draw calls
+1. **Buildings 69,538, not ~46,700 (+49%).** Payload is 56.3 MB on disk but only ~3.8 MB resident
+   for a generous 25-chunk window (Phase 2 measured both), while ~69k draw calls
    would not hold 60fps, colliding with Path A's discrete-per-building addressability.
    **Resolution: per-chunk merged geometry with a per-building id vertex attribute** — carried
    into Phase 2 and Phase 5 below.
@@ -105,29 +106,39 @@ gate was for.
 runtime not installed here. Parse the GML directly with **streaming `lxml.etree.iterparse`** —
 which the 1,572 MB uncompressed volume requires regardless of tooling.
 
-- [ ] `pipeline/parse_citygml.py` — streaming `iterparse` over each tile's `.xml` inside its zip,
+- [x] `pipeline/parse_citygml.py` — streaming `iterparse` over each tile's `.xml` inside its zip,
       clearing elements as it goes. **Never load a whole tile into memory**
-- [ ] Extract per building: stable id, `gml:Solid` / `gml:MultiSurface` polygons, ground height
-- [ ] **Note the archives hold `.xml`, not `.gml`** — filtering on `.gml` matches nothing and
+- [x] Extract per building: stable id, `gml:Solid` / `gml:MultiSurface` polygons, ground height
+- [x] **Note the archives hold `.xml`, not `.gml`** — filtering on `.gml` matches nothing and
       silently yields zero buildings
-- [ ] Cache a compact per-tile intermediate to `data/build/parsed/` so re-runs skip the 1.5 GB
+- [x] Cache a compact per-tile intermediate to `data/build/parsed/` so re-runs skip the 1.5 GB
       parse entirely
-- [ ] `pipeline/build_buildings.py` — intermediate → simplified meshes
-- [ ] Preserve **real roof geometry** — the whole reason Path A was chosen over extrusion
-- [ ] Give every building a **stable id** and keep it addressable
-- [ ] **Batch into per-chunk merged geometry carrying building id as a vertex attribute.** At
+- [x] `pipeline/build_buildings.py` — intermediate → simplified meshes
+- [x] Preserve **real roof geometry** — the whole reason Path A was chosen over extrusion
+- [x] Give every building a **stable id** and keep it addressable
+- [x] **Batch into per-chunk merged geometry carrying building id as a vertex attribute.** At
       69,538 buildings, one `Mesh` each means ~69k draw calls and no 60fps. Merging per chunk
       keeps addressability (shader-side alpha for fade/highlight; split out only the few buildings
       actually being faded) without paying per-building draw calls
-- [ ] Chunk on the graph, not a blind grid — see the navigation model in the vault note
-- [ ] Reproject to a local metric frame centred on the anchor (UTM33 northings are ~5.8M; raw
+- [x] Chunk spatially on a **500m grid** (369 chunks), *not* on the graph as originally written.
+      The graph-predictive part is a runtime concern: given the current edge and the next candidate
+      edges, the renderer computes which cells those polylines cross and prefetches them. Buildings
+      have no natural graph membership, so a grid is the right container and the graph drives
+      *which* cells to load
+- [x] Reproject to a local metric frame centred on the anchor (UTM33 northings are ~5.8M; raw
       coordinates lose float precision at render time)
-- [ ] Export glTF/GLB via `pygltflib` into `data/build/buildings/`
-- [ ] Record real payload size (estimate ~5.6MB at the old build's ~84 bytes/building)
+- [x] Export GLB into `data/build/buildings/` — written directly with `struct` rather than via
+      `pygltflib`, since the output is one mesh with three accessors; `pygltflib` is still used to
+      validate what was written
+- [x] Record real payload size → **56.3 MB** across 369 chunks. The ~5.6MB estimate used a
+      footprint-prism ratio; real LoD2 solids are ~850 bytes/building. Resident working set is what
+      matters: 25 chunks = 3.8 MB / 203k triangles
 
-**Checkpoint:** load the output in a throwaway Three.js `GLTFLoader` page and confirm roofs look
-like real roofs. If they look like flat boxes, the solids were flattened somewhere in the parse —
-fix that before continuing, it invalidates Path A.
+**Checkpoint — PASSED 2026-09-07.** `tools/preview_chunk.html` loads 25 chunks (3,802 buildings,
+203,438 triangles) through Three.js `GLTFLoader`. Gabled and hipped roofs show clear ridge lines at
+close range while large commercial buildings are correctly flat — had the solids been flattened to
+extrusion, every roof would be flat. Tinting by the `_BUILDING` attribute gives each building its
+own colour inside a single merged mesh, confirming addressability survives the merge.
 
 ---
 
