@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 
 const DATA = {
@@ -466,6 +468,28 @@ function describe(world, drive, arrived) {
   };
 }
 
+function MapOverview() {
+  const mapRef = useRef(null);
+
+  useEffect(() => {
+    const map = new maplibregl.Map({
+      container: mapRef.current,
+      style: 'https://tiles.openfreemap.org/styles/liberty',
+      center: [13.2144591, 52.5304357],
+      zoom: 13.2,
+      pitch: 42,
+      bearing: -18,
+      attributionControl: false,
+      dragRotate: false
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    return () => map.remove();
+  }, []);
+
+  return <div className="overview-map" ref={mapRef} aria-label="Map overview with roads and buildings" />;
+}
+
 function App() {
   const canvasRef = useRef(null);
   const readoutRef = useRef(null);
@@ -474,6 +498,7 @@ function App() {
   const driveRef = useRef(null);
   const arriveRef = useRef(() => {});
   const [view, setView] = useState({ status: 'loading' });
+  const [overviewOpen, setOverviewOpen] = useState(false);
 
   function take(option) {
     const world = worldRef.current;
@@ -535,8 +560,14 @@ function App() {
     {view.status === 'ready' && <>
       <header className="topbar">
         <div><span className="eyebrow">MYTESTDRIVE / SPANDAU</span><h1>Free roam</h1></div>
-        <div className="status"><span className="status-dot" /> LIVE WORLD <strong>{view.edgeCount.toLocaleString('de-DE')} edges</strong></div>
+        <div className="topbar-actions">
+          <button className="map-toggle" type="button" onClick={() => setOverviewOpen((open) => !open)} aria-pressed={overviewOpen}>
+            {overviewOpen ? 'Close map' : 'Open map'}
+          </button>
+          <div className="status"><span className="status-dot" /> LIVE WORLD <strong>{view.edgeCount.toLocaleString('de-DE')} edges</strong></div>
+        </div>
       </header>
+      {overviewOpen && <MapOverview />}
       <aside className="panel">
         <div className="panel-heading">
           <span className="eyebrow">CURRENT APPROACH</span>
