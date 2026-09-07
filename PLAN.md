@@ -288,8 +288,16 @@ merely scored lower.
 
 - [ ] Promote the spike into a real project structure under `app/`
 - [ ] `app/main/` — Electron main process, window, packaging
-- [ ] `app/renderer/world/` — Three.js scene: buildings, instanced signs, ribbon-mesh roads built
-      from `cm_fahrbahn` polygons, graph-predictive chunking
+- [x] **Road surfaces and lane markings — built early** (`pipeline/build_roads.py`), to answer what
+      the streets would actually look like. 4,927 surveyed roadway polygons → 771,740 triangles in
+      342 chunks (21.0 MB), 19,530 marking features → 88,374 segments (2.1 MB), 0 failures. Draped
+      onto the same height surface as the graph. Verified in the preview from a driver's eye view
+- [ ] Promote markings from 1px lines to textured quads (decals). `LineBasicMaterial` ignores
+      `linewidth` in WebGL, so lines can never be more than a hairline
+- [ ] Optionally add footways (`cl_gehweg`, 62,966) and kerbs (`bd_bordstein`, 43,021) — available,
+      not yet fetched, purely cosmetic
+- [ ] `app/renderer/world/` — Three.js scene: buildings, instanced signs, the road surfaces above,
+      graph-predictive chunking
 - [ ] `app/renderer/ui/` — React: direction picker, side panel, HUD, conflict display
 - [ ] Rule lookup on entering an edge: read `(junction_id, incoming_edge_id)` from `rules.json`.
       **Lookup only — no rule computation at runtime**

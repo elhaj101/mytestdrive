@@ -257,6 +257,45 @@ between buildings; the city does not float.
 
 ---
 
+## Road surfaces and markings (Phase 6 work brought forward)
+
+Built to answer a direct question: *what will the roads actually look like?* The green wireframe
+in earlier previews is the graph centreline — it drives movement and is **never rendered in the
+app**. The visible road is the surveyed surface.
+
+| Metric | Value |
+|---|---|
+| Roadway polygons (`cm_fahrbahn`) | 4,927 → **771,740 triangles** in 342 chunks, **21.0 MB** |
+| Untriangulable polygons | **0** |
+| Lane markings (`be_fahrbahnmarkierunglinie`) | 19,530 → **88,374 line segments**, 281 chunks, 2.1 MB |
+| Surface materials present | codes 01, 02, 04, 05, 06, 14 — asphalt dominates, rest are setts/pavers |
+| Build time | 20s |
+
+These are real surveyed surfaces, not centrelines widened by a guess: true width, junction shapes,
+flared corners and separately-surfaced strips (cycle lanes, tram beds) all come through as
+distinct material codes.
+
+Both layers are 2D in the source and are draped onto the same LoD2-derived height surface the
+road graph uses, so roads, buildings and markings stay mutually consistent.
+
+**Two rendering traps found here, both silent:**
+
+- **A mesh with no `NORMAL` attribute renders pure black under Lambert lighting.** The building
+  meshes got away with it because their material sets `flatShading: true`, which derives normals
+  in the shader. The road material did not, so the roads rendered as a black, road-shaped hole
+  with no error. Either set `flatShading` or write normals.
+- **Markings sit ~4cm above the surface, which the depth buffer cannot resolve at distance**, so
+  they vanish under the road. The fix is `polygonOffset` on the *road* material rather than
+  lifting the paint off the road, which would look wrong close up. For production, markings should
+  become textured quads (decals) rather than 1px lines — `LineBasicMaterial` ignores `linewidth`
+  in WebGL, so lines can never be more than a hairline.
+
+**Still available, deliberately not fetched** (cosmetic and large): `cl_gehweg` — 62,966 pavement
+polygons — and `bd_bordstein` — 43,021 kerb segments. These add footways and kerb edges when
+wanted.
+
+---
+
 ## Gate assessment
 
 ### Buildings: +48.9% over extrapolation

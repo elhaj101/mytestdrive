@@ -1,17 +1,19 @@
 <!doctype html>
-<title>MyTestDrive — chunk preview</title>
+<title>MyTestDrive — world preview</title>
 <style>
-  body { margin: 0; background: #10131a; color: #cfd6e4; font: 13px system-ui, sans-serif; }
-  #hud { position: fixed; top: 10px; left: 12px; z-index: 10; line-height: 1.6; }
+  body { margin: 0; background: #0d1016; color: #cfd6e4; font: 13px system-ui, sans-serif; }
+  #hud { position: fixed; top: 10px; left: 12px; z-index: 10; line-height: 1.7; }
   button { background: #232a38; color: #cfd6e4; border: 1px solid #3a4459;
            padding: 5px 10px; margin-right: 6px; border-radius: 4px; cursor: pointer; }
+  button.on { background: #3c4a63; }
   #stats { margin-top: 8px; opacity: .75; }
   canvas { display: block; width: 100vw; height: 100vh; }
 </style>
 <div id="hud">
-  <button onclick="view('street')">street level</button>
-  <button onclick="view('roofs')">roof view</button>
+  <button onclick="view('drive')">driver's eye</button>
+  <button onclick="view('above')">above the street</button>
   <button onclick="view('over')">overview</button>
+  <button id="gbtn" onclick="toggleGraph()">graph wireframe: off</button>
   <div id="stats">loading…</div>
 </div>
 <script type="importmap">
@@ -24,129 +26,160 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const RADIUS = 2, CHUNK = 500;
-const SPAWN = { x: -73.87, y: 37.64, heading: -117.0 };
+const RADIUS = 3, CHUNK = 500;
+let SPAWN = { x: -73.87, y: 37.64, z: 32.0, heading: -117.0 };
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x10131a);
-scene.fog = new THREE.Fog(0x10131a, 400, 2200);
+scene.background = new THREE.Color(0x0d1016);
+scene.fog = new THREE.Fog(0x0d1016, 500, 2600);
 
-const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 6000);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.3, 8000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-// innerWidth/innerHeight can still be 0 when this module first runs, which
-// silently produces a 0x0 canvas and a black screen with no error anywhere.
+// innerWidth/innerHeight can be 0 when this module first runs, which silently
+// produces a 0x0 canvas and a black screen with no error at all.
 function resize() {
   const w = innerWidth || document.documentElement.clientWidth || 1200;
   const h = innerHeight || document.documentElement.clientHeight || 800;
   renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+  camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 resize();
 addEventListener('resize', resize);
 
-scene.add(new THREE.HemisphereLight(0xbdd3ff, 0x2a2a30, 2.2));
-const sun = new THREE.DirectionalLight(0xffffff, 2.4);
-sun.position.set(-400, -700, 900);
+scene.add(new THREE.HemisphereLight(0xc2d6ff, 0x2b2b33, 2.0));
+const sun = new THREE.DirectionalLight(0xfff2e0, 2.3);
+sun.position.set(-500, -800, 900);
 scene.add(sun);
 
-// Flat per-triangle normals from screen-space derivatives, so roof facets read
-// as facets without storing a normal attribute. Building id tints each solid,
-// proving the _BUILDING attribute survives the merge.
-const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+// GLTFLoader lowercases custom attribute names: _BUILDING arrives as _building.
+const attr = (g, n) => g.getAttribute(n.toLowerCase()) || g.getAttribute(n);
 
-const loader = new GLTFLoader();
-let totalTris = 0, totalBuildings = 0, loaded = 0;
+const buildingMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+// flatShading derives normals in the shader. Without it these meshes carry no
+// NORMAL attribute and Lambert lighting renders them pure black. DoubleSide
+// because earcut winding on ground polygons is not guaranteed to face up.
+const roadMat = new THREE.MeshLambertMaterial({
+  vertexColors: true, flatShading: true, side: THREE.DoubleSide,
+  // Markings sit ~4cm above the surface, which the depth buffer cannot resolve
+  // at distance. Push the road back rather than lifting the paint off the road.
+  polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+});
+const markMat = new THREE.LineBasicMaterial({ color: 0xf0ead6 });
 
-// GLTFLoader lowercases custom attribute names, so _BUILDING arrives as _building.
-function buildingAttr(geometry) {
-  return geometry.getAttribute('_building') || geometry.getAttribute('_BUILDING');
-}
+// Surveyed surface material codes: asphalt dominates, the rest are setts/pavers.
+const MATERIAL_COLOUR = {
+  1: 0x8a8d96, 2: 0x7e828c, 4: 0xa08b6e, 5: 0x94866f, 6: 0xab9878, 14: 0x74777f
+};
 
-function tint(geometry) {
-  const ids = buildingAttr(geometry);
-  const colors = new Float32Array(ids.count * 3);
+function tintBuildings(geometry) {
+  const ids = attr(geometry, '_BUILDING');
+  const colours = new Float32Array(ids.count * 3);
   const c = new THREE.Color();
   for (let i = 0; i < ids.count; i++) {
-    c.setHSL((ids.getX(i) * 0.191) % 1, 0.28, 0.52 + 0.16 * Math.sin(ids.getX(i)));
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    const v = ids.getX(i);
+    c.setHSL((v * 0.191) % 1, 0.22, 0.55 + 0.14 * Math.sin(v));
+    colours[i * 3] = c.r; colours[i * 3 + 1] = c.g; colours[i * 3 + 2] = c.b;
   }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
 }
 
-const cells = [];
-for (let cx = -RADIUS; cx <= RADIUS; cx++)
-  for (let cy = -RADIUS; cy <= RADIUS; cy++) cells.push([cx, cy]);
+function tintRoads(geometry) {
+  const mat = attr(geometry, '_MATERIAL');
+  const colours = new Float32Array(mat.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < mat.count; i++) {
+    c.setHex(MATERIAL_COLOUR[Math.round(mat.getX(i))] ?? 0x333539);
+    colours[i * 3] = c.r; colours[i * 3 + 1] = c.g; colours[i * 3 + 2] = c.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+}
 
-const ids = new Set();
-for (const [cx, cy] of cells) {
-  loader.load(`../data/build/buildings/chunk_${cx}_${cy}.glb`, (gltf) => {
-    gltf.scene.traverse((node) => {
-      if (!node.isMesh) return;
-      tint(node.geometry);
-      node.material = material;
-      totalTris += node.geometry.index.count / 3;
-      const a = buildingAttr(node.geometry);
-      for (let i = 0; i < a.count; i++) ids.add(`${cx}_${cy}_${a.getX(i)}`);
-    });
+const loader = new GLTFLoader();
+const counts = { buildings: 0, roadTris: 0, marks: 0, chunks: 0 };
+
+function load(url, onMesh) {
+  loader.load(url, (gltf) => {
+    gltf.scene.traverse((node) => { if (node.isMesh || node.isLine) onMesh(node); });
     scene.add(gltf.scene);
-    loaded++;
-    totalBuildings = ids.size;
+    counts.chunks++;
     document.getElementById('stats').textContent =
-      `${loaded}/${cells.length} chunks · ${totalBuildings.toLocaleString()} buildings · ` +
-      `${totalTris.toLocaleString()} triangles`;
-  }, undefined, () => { loaded++; });
+      `${counts.chunks} chunks · ${counts.buildings.toLocaleString()} buildings · ` +
+      `${counts.roadTris.toLocaleString()} road triangles · ` +
+      `${counts.marks.toLocaleString()} marking segments`;
+  }, undefined, () => {});
 }
 
-// The road graph, drawn at its own interpolated elevation. No ground plane:
-// a hardcoded one would hide exactly the bug this is meant to expose.
+for (let cx = -RADIUS; cx <= RADIUS; cx++) {
+  for (let cy = -RADIUS; cy <= RADIUS; cy++) {
+    load(`../data/build/buildings/chunk_${cx}_${cy}.glb`, (m) => {
+      tintBuildings(m.geometry); m.material = buildingMat;
+      counts.buildings += new Set(
+        Array.from({ length: attr(m.geometry, '_BUILDING').count },
+                   (_, i) => attr(m.geometry, '_BUILDING').getX(i))).size;
+    });
+    load(`../data/build/roads/road_${cx}_${cy}.glb`, (m) => {
+      tintRoads(m.geometry); m.material = roadMat;
+      counts.roadTris += m.geometry.index.count / 3;
+    });
+    load(`../data/build/roads/marking_${cx}_${cy}.glb`, (m) => {
+      m.material = markMat;
+      counts.marks += m.geometry.index.count / 2;
+    });
+  }
+}
+
+// Debug only: the graph centreline that drives movement. Never part of the app.
+const graphGroup = new THREE.Group();
+graphGroup.visible = false;
+scene.add(graphGroup);
 fetch('../data/build/graph.json').then(r => r.json()).then((graph) => {
-  const ok = [], suspect = [];
-  for (const edge of graph.edges) {
-    const target = edge.grade_suspect ? suspect : ok;
-    for (let i = 0; i < edge.points.length - 1; i++) {
-      const a = edge.points[i], b = edge.points[i + 1];
-      target.push(a[0], a[1], a[2] + 0.2, b[0], b[1], b[2] + 0.2);
+  const v = [];
+  for (const e of graph.edges)
+    for (let i = 0; i < e.points.length - 1; i++) {
+      const a = e.points[i], b = e.points[i + 1];
+      v.push(a[0], a[1], a[2] + 0.5, b[0], b[1], b[2] + 0.5);
     }
-  }
-  for (const [verts, colour] of [[ok, 0x6fd3a0], [suspect, 0xff5a4d]]) {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    scene.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: colour })));
-  }
-  const spawn = graph.spawn;
-  document.getElementById('stats').textContent +=
-    ` · roads z-aware · spawn z=${spawn.z}m`;
-  window.SPAWN_Z = spawn.z;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  graphGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x6fd3a0 })));
+  SPAWN = { ...graph.spawn.point && {}, x: graph.spawn.point[0], y: graph.spawn.point[1],
+            z: graph.spawn.z, heading: graph.spawn.heading };
+  view('drive');
 });
+
+window.toggleGraph = () => {
+  graphGroup.visible = !graphGroup.visible;
+  const b = document.getElementById('gbtn');
+  b.textContent = `graph wireframe: ${graphGroup.visible ? 'on' : 'off'}`;
+  b.className = graphGroup.visible ? 'on' : '';
+};
 
 window.view = (mode) => {
   const rad = SPAWN.heading * Math.PI / 180;
-  if (mode === 'street') {
-    camera.position.set(SPAWN.x, SPAWN.y, 34.6);
-    camera.up.set(0, 0, 1);
-    camera.lookAt(SPAWN.x + Math.cos(rad) * 100, SPAWN.y + Math.sin(rad) * 100, 36);
-  } else if (mode === 'roofs') {
-    camera.position.set(SPAWN.x - 260, SPAWN.y - 260, 150);
-    camera.up.set(0, 0, 1);
-    camera.lookAt(SPAWN.x + 60, SPAWN.y + 60, 40);
+  camera.up.set(0, 0, 1);
+  if (mode === 'drive') {
+    // Eye height above the road surface, looking along the spawn heading.
+    camera.position.set(SPAWN.x, SPAWN.y, SPAWN.z + 1.5);
+    camera.lookAt(SPAWN.x + Math.cos(rad) * 140, SPAWN.y + Math.sin(rad) * 140, SPAWN.z + 1.9);
+  } else if (mode === 'above') {
+    camera.position.set(SPAWN.x - Math.cos(rad) * 70, SPAWN.y - Math.sin(rad) * 70, SPAWN.z + 28);
+    camera.lookAt(SPAWN.x + Math.cos(rad) * 160, SPAWN.y + Math.sin(rad) * 160, SPAWN.z);
   } else {
-    camera.position.set(SPAWN.x - 900, SPAWN.y - 900, 700);
-    camera.up.set(0, 0, 1);
-    camera.lookAt(SPAWN.x, SPAWN.y, 40);
+    camera.position.set(SPAWN.x - 700, SPAWN.y - 700, SPAWN.z + 520);
+    camera.lookAt(SPAWN.x, SPAWN.y, SPAWN.z);
   }
 };
-view('roofs');
+view('drive');
 
 Object.assign(window, { scene, camera, renderer, THREE });
 
 (function loop() {
   requestAnimationFrame(loop);
-  const canvas = renderer.domElement;
-  if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) resize();
+  const c = renderer.domElement;
+  if (c.width !== c.clientWidth || c.height !== c.clientHeight) resize();
   renderer.render(scene, camera);
 })();
 </script>
