@@ -41,6 +41,19 @@ python3 -m venv .venv
 cd pipeline
 ```
 
+## Running the Free Roam app
+
+The Electron/Three.js spike starts every session on the resolved TÜV spawn and loads the real
+building and road chunks for the current and candidate edges.
+
+```bash
+npm install
+npm start
+```
+
+The camera is rail-locked to the graph. Use the left, straight or right choice at each junction;
+the side panel reads the precomputed rule and distinguishes scored rules from hint-only conflicts.
+
 Stages, in dependency order. Every fetch stage caches to `data/raw/`, so re-runs cost nothing;
 pass `--force` to refetch.
 
@@ -106,6 +119,42 @@ Three consequences, all helpful: buildings sit beside the view rather than in fr
 occlusion is optional polish, not a core system); chunk load/unload can be **predictive along the
 graph**; and no physics engine is needed at all, since movement is a parametric position along an
 edge.
+
+## Art direction considerations (proposed, not yet committed)
+
+The goal is **exam-realistic rather than photorealistic**: visual effort should make real streets,
+road markings and signage easy to recognize. The debug preview is a verification tool, not the
+intended look.
+
+### Priority order
+
+1. **Roads and markings** — the content being learned
+2. **Atmosphere** — sky and lighting for a believable outdoor scene
+3. **Buildings and signs** — recognizability, not fabricated photorealism
+
+### Candidate direction
+
+- Render dashed center lines, solid stop lines and lane boundaries as textured decal quads, not
+  `LineBasicMaterial` lines.
+- Use tileable asphalt, Pflaster/cobble and concrete textures keyed to `cm_fahrbahn` material
+  codes.
+- Add curb and pavement geometry from `bd_bordstein` and `cl_gehweg` so roadway edges remain
+  legible.
+- Use real `roofType` data for roof color, and consider a procedural window-grid facade driven by
+  building height. LoD2 contains no facade textures, so invented facade detail should not imply
+  false real-world information.
+- Replace the debug preview's black void with Three.js's tunable physical sky shader and outdoor
+  lighting.
+- Use public-domain StVO sign faces on instanced pole-and-plate meshes, oriented to each junction
+  leg's real bearing rather than billboarded toward the camera.
+
+### Explicitly deferred and open
+
+Weather/time-of-day cycles, trees and other traffic do not affect rule learning and should remain
+out of the first build. Bike-lane rendering needs investigation first: the `fbl` codes are not yet
+decoded and two relevant WFS layers have not been fetched. StVO artwork coverage across all codes
+also needs checking. Finally, the Phase 5 60fps gate must be rerun with textures, decals, curbs and
+instanced signs; the current performance measurements cover bare geometry only.
 
 ## Measured figures
 

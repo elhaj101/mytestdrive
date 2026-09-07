@@ -277,13 +277,13 @@ Prove the chosen stack clears the bar before building the real app on it. One sh
 (the real Phase 1–4 output at **full scale** — a single tile would pass on every stack and
 discriminate nothing).
 
-- [ ] Electron shell + Three.js scene + React side panel
+- [x] Electron shell + Three.js scene + React side panel
 - [ ] Full 5km payload resident: per-building meshes + `InstancedMesh` for the 16,342 signs
-- [ ] Graph-predictive chunk load/unload keyed to the next candidate edges (not general spatial
+- [x] Graph-predictive chunk load/unload keyed to the next candidate edges (not general spatial
       streaming — the rail-locked camera makes the next edges knowable)
-- [ ] Rail-locked camera: position along current edge, heading = travel direction, reorients on
+- [x] Rail-locked camera: position along current edge, heading = travel direction, reorients on
       the player's pick. **No orbit, no zoom, no fly-over**
-- [ ] Direction picker + side panel + conflict display wired to the two named junctions only —
+- [x] Direction picker + side panel + conflict display wired to the two named junctions only —
       full geometry, minimal game logic
 
 ### Numeric bar — same for all spikes, numbers not adjectives
@@ -329,8 +329,8 @@ merely scored lower.
 
 ## Phase 6 — Build the app
 
-- [ ] Promote the spike into a real project structure under `app/`
-- [ ] `app/main/` — Electron main process, window, packaging
+- [x] Promote the spike into a real project structure under `app/`
+- [x] `app/main/` — Electron main process, window, packaging
 - [x] **Road surfaces and lane markings — built early** (`pipeline/build_roads.py`), to answer what
       the streets would actually look like. 4,927 surveyed roadway polygons → 771,740 triangles in
       342 chunks (21.0 MB), 19,530 marking features → 88,374 segments (2.1 MB), 0 failures. Draped
@@ -339,10 +339,10 @@ merely scored lower.
       `linewidth` in WebGL, so lines can never be more than a hairline
 - [ ] Optionally add footways (`cl_gehweg`, 62,966) and kerbs (`bd_bordstein`, 43,021) — available,
       not yet fetched, purely cosmetic
-- [ ] `app/renderer/world/` — Three.js scene: buildings, instanced signs, the road surfaces above,
+- [x] `app/renderer/world/` — Three.js scene: buildings, the road surfaces above,
       graph-predictive chunking
-- [ ] `app/renderer/ui/` — React: direction picker, side panel, HUD, conflict display
-- [ ] Rule lookup on entering an edge: read `(junction_id, incoming_edge_id)` from `rules.json`.
+- [x] `app/renderer/ui/` — React: direction picker, side panel, HUD, conflict display
+- [x] Rule lookup on entering an edge: read `(junction_id, incoming_edge_id)` from `rules.json`.
       **Lookup only — no rule computation at runtime**
 - [ ] **Cluster junction nodes that are one real intersection.** Tiefwerderweg × Schulenburgstraße
       is 5 graph nodes (a one-way pair layout). Without clustering, the player is asked for several
@@ -350,7 +350,7 @@ merely scored lower.
 - [ ] **Disambiguate the 78 ambiguous turn sets** — junctions where two options fall in the same
       left/right/straight bucket. Three buttons cannot express those; show the street name on the
       option or use a finer angular fan
-- [ ] Render hint-only legs visibly differently from scored ones — the distinction is a core
+- [x] Render hint-only legs visibly differently from scored ones — the distinction is a core
       correctness promise of the app, not a UI detail
 - [ ] Sign faces from Wikimedia Commons SVGs, instanced
 - [ ] Smooth heading transition through a turn (the one piece of camera motion that exists)
@@ -363,11 +363,11 @@ merely scored lower.
 
 ---
 
-## Phase 7 — Modes  *(depends on an open decision — see below)*
+## Phase 7 — Free Roam
 
-- [ ] **Free Roam** — full 5km network, no timer, no fail state, panel informs on every street
+- [x] **Free Roam** — full 5km network, no timer, no fail state, panel informs on every street
       entered. This is where the outer ring's study value lives
-  - [ ] **Fixed spawn at the TÜV Spandau building** (decided 2026-09-07). Every session starts at
+      - [x] **Fixed spawn at the TÜV Spandau building** (decided 2026-09-07). Every session starts at
         the anchor `52.5304357, 13.2144591`, on the edge leaving Pichelswerderstraße 9, heading
         toward the exam's own opening junction (Pichelswerderstraße → Freiheit). Not random, not
         last-visited — the real exam's first approach gets rehearsed every single session
@@ -376,19 +376,13 @@ merely scored lower.
         not a bare lat/lon the renderer has to snap at runtime. Resolved to `e6261` on
         **Pichelswerderstraße**, offset 1.26m, heading −117.0°, z 31.97m — the correct street by
         name, which independently confirms the anchor
-- [ ] **Exam Simulation** — same world, constrained to a 2–4km loop, 25-minute budget, scoring by
-      schwere/leichte Fehler
-- [ ] Both share one world and one dataset
+- [ ] **Exam Simulation** — deferred. The first shipped mode is Free Roam.
 
 ---
 
 ## Open decisions — Ali's, not settled here
 
-1. **Free Roam vs Exam Simulation vs both.** The research recommends building both on a shared
-   world, but this has not been decided. Phase 7 is blocked on it.
-   Context: a real 25–30 minute exam route only reaches a **2–4km** loop, so the outer ring
-   (4–5km) is real street knowledge that no single exam route will ever touch.
-2. **Verbatim § citations.** The StVO precedence order in Phase 4 is standard structure, but the
+1. **Verbatim § citations.** The StVO precedence order in Phase 4 is standard structure, but the
    vault's `fahrpruefung-fehlerkatalog` holds only secondary summaries — TÜV's official page
    returned HTTP 403. **Verify exact § citations against actual StVO/FeV text before printing
    them in-app as legal fact.** Until then, keep them indicative, not verbatim.
@@ -408,7 +402,7 @@ Phase 5  Electron spike ................... GATE: numeric bar, then stop rule
          ├── 5a Tauri  (only if size/cold-start matters)
          └── 5b Godot  (only if fps missed)
 Phase 6  build the app
-Phase 7  modes ............................ blocked on open decision #1
+Phase 7  Free Roam ........................ DONE — starts at the TÜV spawn
 ```
 
 Phases 1–4 are pure Python and carry over **unchanged** whichever shell wins in Phase 5. That is

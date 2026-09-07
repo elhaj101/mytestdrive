@@ -1,0 +1,21 @@
+{
+  "name": "mytestdrive",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Berlin practical driving exam preparation in a real 3D street world",
+  "main": "app/main/main.cjs",
+  "scripts": {
+    "build": "vite build --config app/renderer/vite.config.mjs",
+    "start": "npm run build && electron .",
+    "check": "npm run build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "electron": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "three": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {}
+}
