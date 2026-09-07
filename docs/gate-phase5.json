@@ -1,0 +1,48 @@
+{
+  "coldStartS": 0.843,
+  "refreshHz": 60.000831604003906,
+  "ringFps": {
+    "median": 60.240963822976134,
+    "low": 56.49717517929372,
+    "worstFrameMs": 21.799999997019768
+  },
+  "ringChunks": 78,
+  "payloadLoadS": 1.364,
+  "chunksRequested": 992,
+  "chunksResident": 992,
+  "heapMB": 179.290771484375,
+  "drawInfo": "{\"geometries\":130,\"calls\":120,\"triangles\":487287}",
+  "fullFpsRuns": [
+    {
+      "median": 59.88023956370228,
+      "low": 57.471264348129,
+      "worstFrameMs": 17.900000005960464
+    },
+    {
+      "median": 59.88023956370228,
+      "low": 57.471264348129,
+      "worstFrameMs": 26.700000002980232
+    },
+    {
+      "median": 59.88023956370228,
+      "low": 57.471264348129,
+      "worstFrameMs": 18.100000008940697
+    }
+  ],
+  "fullFps": {
+    "median": 59.88023956370228,
+    "low": 57.471264348129,
+    "worstFrameMs": 17.900000005960464
+  },
+  "panelMs": {
+    "samples": 7,
+    "median": 0.9000000059604645,
+    "worst": 2.1000000089406967
+  },
+  "size": {
+    "electronRuntime": 324490466,
+    "appBundle": 804284,
+    "worldData": 88762209,
+    "graphAndRules": 10158096
+  }
+}

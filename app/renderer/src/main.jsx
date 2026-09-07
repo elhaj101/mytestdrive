@@ -160,7 +160,11 @@ function sample(points, distance) {
 
 function makeScene(canvas, world, drive, onArrive, readoutRef) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Measured, not guessed (tools/measure_gate.cjs, full 5km payload resident, 60Hz panel):
+  // DPR 2 = 4.5Mpx = 51fps, 1.75 = 58.5, 1.5 = 60.2, and it stays at the vsync cap below
+  // that. The renderer is fill-rate bound, not culling bound — 992 resident chunks still
+  // cull to ~119 draw calls — so pixels are the knob that matters and 1.5 is the knee.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -251,6 +255,29 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
     }
   }
 
+  // Debug handle for the Phase 5 gate harness (tools/measure_gate.cjs). Nothing in the
+  // app reads it; it exists so the gate can be re-measured on demand rather than trusted
+  // from a one-off run. `loadAll` is the gate's full-payload stress case, not how the app
+  // streams — shipping behaviour stays the ring in ensureCells.
+  window.__mtd = {
+    scene,
+    camera,
+    renderer,
+    firstFrameEpoch: null,
+    counts: () => ({ loaded: loaded.size, inflight: inflight.size }),
+    async loadAll(concurrency = 24) {
+      const jobs = [
+        ...[...world.buildingFiles].map(([cell, file]) => [file, `building:${cell}`, 'buildings', 'buildings']),
+        ...[...world.roadFiles].map(([cell, file]) => [file, `road:${cell}`, 'roads', 'roads']),
+        ...[...world.markingFiles].map(([cell, file]) => [file, `marking:${cell}`, 'roads', 'markings'])
+      ];
+      for (let index = 0; index < jobs.length; index += concurrency) {
+        await Promise.all(jobs.slice(index, index + concurrency).map((job) => addGlb(...job)));
+      }
+      return jobs.length;
+    }
+  };
+
   const clock = new THREE.Clock();
   let snapped = false;
   let frame = 0;
@@ -282,6 +309,7 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
     focus.y += EYE_HEIGHT;
     camera.lookAt(focus);
     renderer.render(scene, camera);
+    if (window.__mtd.firstFrameEpoch === null) window.__mtd.firstFrameEpoch = Date.now();
 
     // Written straight to the DOM: a per-frame setState would re-render the whole panel.
     if (readoutRef.current) {

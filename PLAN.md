@@ -24,7 +24,7 @@ Radius: 5km. Center LoD2 tile: `LoD2_378_5821`.
 | 3b — Elevation | **done** | IDW over LoD2 ground, 4.4% flagged low-confidence |
 | Roads + markings *(Phase 6, pulled forward)* | **done** | 771,740 triangles, 88,374 marking segments |
 | 4 — Rule engine | **done** | 11,844 approaches, both acceptance junctions pass |
-| 5 — Electron spike ← gate | **next** | nothing built |
+| 5 — Electron spike ← gate | **done** | gate CLEARS: 59.9fps full payload, 0.84s cold start |
 | 6 — The app | not started | |
 | 7 — Modes | blocked | open decision #1 |
 
@@ -288,12 +288,22 @@ discriminate nothing).
 
 ### Numeric bar — same for all spikes, numbers not adjectives
 
+Measured by `tools/measure_gate.cjs`, which boots the real app and drives it through the
+renderer's own debug handle, so these are the shipping renderer's numbers and not a
+lookalike harness's. Raw output: [docs/gate-phase5.json](docs/gate-phase5.json).
+Machine: darwin 24.6.0, **60Hz panel** — no fps figure here can exceed 60.
+
 | Measure | Threshold | Result |
 |---|---|---|
-| Sustained fps, full payload resident, driving-height camera | ≥ 60fps | |
-| Side panel update on entering a flagged leg | ≤ 100ms perceived | |
-| Cold start → first interactive frame (data local) | ≤ 5s | |
-| Packaged binary size | recorded, not gated | |
+| Sustained fps, full payload resident, driving-height camera | ≥ 60fps | **59.9 median, 57.5 p95-low** — the vsync cap. **PASS** |
+| Side panel update on entering a flagged leg | ≤ 100ms perceived | **0.9ms median, 2.1ms worst** (7 junctions). **PASS**, ~100x margin |
+| Cold start → first interactive frame (data local) | ≤ 5s | **0.84s**. **PASS** |
+| Packaged binary size | recorded, not gated | **≥ 404.6 MB** floor: Electron runtime 309.5, world GLB 84.7, graph+rules 9.7, bundle 0.8 |
+
+**Caveat, deliberately not hidden:** "full payload" here is buildings + road surfaces +
+markings — 992 chunks, all 5km resident at once. The 16,342 signs are not in it because
+sign geometry does not exist yet (no `build_signs.py`). This bar must be re-measured once
+signs land; until then the fps result is a floor, not the final number.
 
 **Estimated cost:** ~1 working day (6–8h). Every technology here is already in the existing
 stack; the only new API surface is Three.js instancing/culling.
@@ -305,6 +315,40 @@ stack; the only new API surface is Three.js instancing/culling.
 >   the wrong layer.
 > - Binary size or cold start turns out to matter in practice (e.g. distributing to another
 >   machine) → run **Phase 5a (Tauri)**.
+
+### Gate result — CLEARS, proceeding to Phase 6
+
+**Phases 5a and 5b are unnecessary, not pending work.**
+
+The bar was missed on the first run and the reason mattered more than the number.
+**51fps at full payload, and the stop rule's stated hypothesis was wrong.** That branch
+blamed hand-built culling — but culling was never the problem: 992 resident chunks cull to
+**119 draw calls and ~490k triangles**, which no GPU should struggle with. Two isolating
+measurements found the real layer:
+
+- Freezing world matrices on the static chunks (`matrixAutoUpdate = false`): **no change**.
+  Not CPU-bound, not scene-graph-bound.
+- Halving the pixels: **straight to the 60Hz cap**. Fill-rate bound.
+
+The pixel-ratio sweep at full payload gives a clean knee:
+
+| Device pixel ratio | Framebuffer | fps |
+|---|---|---|
+| 2.0 | 4.5 Mpx | 51.3 |
+| 1.75 | 3.4 Mpx | 58.5 |
+| **1.5** | **2.5 Mpx** | **60.2** |
+| 1.25 | 1.7 Mpx | 60.2 |
+| 1.0 | 1.1 Mpx | 60.2 |
+
+Capping device pixel ratio at 1.5 clears the bar with headroom on a retina panel. **This is
+why the Godot branch does not apply:** fragment cost at a given resolution is a property of
+the pixels, not the engine — Godot would shade the same 4.5 Mpx and pay the same price. An
+engine rewrite costing 3–5 days cannot buy what a one-line quality knob already bought, and
+the stop rule's own instruction was to check the layer before switching stacks.
+
+Worth recording for whoever reads this next: the app's *shipping* configuration (ring
+streaming, ~78 chunks) measured 58.5fps even at DPR 2. Full-payload-resident is the gate's
+stress case, deliberately not how the app streams.
 
 ### Phase 5a — Tauri swap *(conditional — only if size/cold-start matters)*
 
