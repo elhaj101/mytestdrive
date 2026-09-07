@@ -22,6 +22,9 @@ const LOOK_AHEAD_M = 12;
 // panel, not a guarantee anywhere else.
 const POSITION_DAMPING = 13;
 const HEADING_DAMPING = 6;
+const CAR_LANE_OFFSET = 1.35;
+const CAMERA_DISTANCE = 8;
+const CAMERA_HEIGHT = 4.2;
 const TURN_ORDER = ['left', 'straight', 'right', 'uturn'];
 const TURN_ARROW = { left: '↙', straight: '↓', right: '↘', uturn: '↺' };
 
@@ -121,6 +124,7 @@ function optionsFor(world, edge, direction) {
   const turns = (junction && junction.turns && junction.turns[`${edge.id}:${direction}`]) || [];
   return turns
     .filter((turn) => world.edges.has(turn.edge))
+    .filter((turn) => turn.turn !== 'uturn' || !edge.oneway)
     .slice()
     .sort((a, b) => TURN_ORDER.indexOf(a.turn) - TURN_ORDER.indexOf(b.turn) || b.relative - a.relative);
 }
@@ -174,7 +178,42 @@ function setPose(drive, edge, direction) {
   drive.length = polylineLength(drive.points);
   drive.distance = 0;
   drive.speed = speedFor(edge);
+  // Berlin drives on the right. On a two-way road the centreline-to-lane offset
+  // is approximate because the source graph has no lane geometry; one-way edges
+  // stay centred rather than inventing a passing lane.
+  drive.laneOffset = edge.oneway ? 0 : CAR_LANE_OFFSET;
   drive.moving = true;
+}
+
+function createCar() {
+  const car = new THREE.Group();
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xd84b3f, roughness: 0.58, metalness: 0.08 });
+  const glassMaterial = new THREE.MeshStandardMaterial({ color: 0x18353c, roughness: 0.2, metalness: 0.15 });
+  const tyreMaterial = new THREE.MeshStandardMaterial({ color: 0x15191a, roughness: 0.9 });
+  const lampMaterial = new THREE.MeshBasicMaterial({ color: 0xfff0b8 });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.62, 3.7), bodyMaterial);
+  body.position.y = 0.62;
+  car.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.58, 1.9), glassMaterial);
+  cabin.position.set(0, 1.08, 0.08);
+  car.add(cabin);
+
+  for (const side of [-1, 1]) {
+    for (const z of [-1.2, 1.2]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.18, 16), tyreMaterial);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(side * 0.88, 0.38, z);
+      car.add(wheel);
+    }
+  }
+  for (const side of [-0.58, 0.58]) {
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.05), lampMaterial);
+    lamp.position.set(side, 0.7, -1.88);
+    car.add(lamp);
+  }
+  car.scale.setScalar(0.9);
+  return car;
 }
 
 function sample(points, distance) {
@@ -229,6 +268,8 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
   const sun = new THREE.DirectionalLight('#fff5d6', 2.2);
   sun.position.set(-300, 500, 250);
   scene.add(sun);
+  const car = createCar();
+  scene.add(car);
 
   // The chunk GLBs deliberately ship no materials and no NORMAL attribute, so the
   // renderer supplies both. flatShading derives normals in the shader; without it these
@@ -357,13 +398,18 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
       }
     }
 
-    const { position, forward } = sample(drive.points, drive.distance);
-    ensureCells(position.x, -position.z);
+    const { position: roadPosition, forward } = sample(drive.points, drive.distance);
+    const right = new THREE.Vector3(-forward.z, 0, -forward.x);
+    const position = roadPosition.clone().addScaledVector(right, drive.laneOffset);
+    ensureCells(roadPosition.x, -roadPosition.z);
 
-    const eye = position.clone();
-    eye.y += EYE_HEIGHT;
+    car.position.copy(position);
+    car.rotation.y = Math.atan2(forward.x, -forward.z);
+
+    const eye = position.clone().addScaledVector(forward, -CAMERA_DISTANCE);
+    eye.y += CAMERA_HEIGHT;
     const focus = position.clone().addScaledVector(forward, LOOK_AHEAD_M);
-    focus.y += EYE_HEIGHT;
+    focus.y += 1.1;
 
     if (snapped) {
       // Exponential damping, so the rate is the same at any frame rate.
@@ -412,6 +458,7 @@ function describe(world, drive, arrived) {
     edgeCount: world.graph.edges.length,
     name: drive.edge.name || 'Unnamed street',
     highway: drive.edge.highway,
+    oneway: Boolean(drive.edge.oneway),
     length: drive.length,
     rule: ruleFor(world, drive.edge, drive.direction),
     options: disambiguate(optionsFor(world, drive.edge, drive.direction)),
@@ -508,7 +555,7 @@ function App() {
           <span ref={readoutRef}>Approaching</span>
         </div>
         <div className="choices">
-          {options.length === 0 && <button className="choice" disabled={!arrived} onClick={uTurn}>
+          {options.length === 0 && <button className="choice" disabled={!arrived || view.oneway} onClick={uTurn}>
             <span className="turn-arrow">{TURN_ARROW.uturn}</span>
             <span><b>Turn around</b><small>Dead end</small></span>
           </button>}
