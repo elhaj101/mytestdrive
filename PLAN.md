@@ -11,6 +11,36 @@ Radius: 5km. Center LoD2 tile: `LoD2_378_5821`.
 
 ---
 
+## Where this stands — 2026-09-07
+
+**The data pipeline is complete and verified. No app code exists yet.**
+
+| Phase | State | Result |
+|---|---|---|
+| 0 — Skeleton | **done** | repo, venv, deps, gitignore |
+| 1 — Fetch + measure ← gate | **done** | gate tripped on buildings, resolved |
+| 2 — Building geometry (Path A) | **done** | 69,538 buildings, roofs visually verified |
+| 3 — Road graph | **done** | 6,943 edges / 6,001 junctions / 472 km |
+| 3b — Elevation | **done** | IDW over LoD2 ground, 4.4% flagged low-confidence |
+| Roads + markings *(Phase 6, pulled forward)* | **done** | 771,740 triangles, 88,374 marking segments |
+| 4 — Rule engine | **done** | 11,844 approaches, both acceptance junctions pass |
+| 5 — Electron spike ← gate | **next** | nothing built |
+| 6 — The app | not started | |
+| 7 — Modes | blocked | open decision #1 |
+
+Nine pipeline stages exist under `pipeline/`. What does not exist is the Electron app that drives
+through the world they produce.
+
+**Four design assumptions failed on measurement and were replaced** — each recorded inline below
+rather than quietly corrected: the building extrapolation (+49%), the "12,598 ways" figure
+(really `drivable+service`), sign matching by bearing (48° median error), and signal matching by
+proximity (515 of 642 are mid-edge stop lines).
+
+**One safety bug was found and fixed:** a Vorfahrtstraße designates the road, not one approach, and
+resolving per-sign left 322 approaches telling the driver they had priority where they must yield.
+
+---
+
 ## Phase 0 — Repository skeleton
 
 - [x] Create `~/mytestdrive` outside the Brain vault
@@ -147,9 +177,9 @@ own colour inside a single merged mesh, confirming addressability survives the m
 - [x] `pipeline/build_graph.py` — raw OSM ways → routable graph
 - [x] **Build the graph from the 6,001 drivable ways only.** Exclude `service`, `track` and
       `pedestrian` — the player must not be able to drive a parking aisle or a driveway
-- [ ] Keep service ways alongside, flagged `drivable: false`, as rule context for the "leaving a
-      driveway always yields" rule — **deferred to Phase 4**, which is where that rule is resolved;
-      `graph.json` deliberately contains drivable edges only
+- [ ] Keep service ways alongside as rule context — **deferred to Phase 4 and concluded there to
+      be unnecessary**: the player never emerges from a driveway, so §10 cannot apply to their own
+      movement. `graph.json` deliberately contains drivable edges only
 - [x] Measure and record the real edge and junction counts — these close the last open item of the
       Phase 1 gate, and both extrapolations were scaled from the service-inflated way count
 - [x] Resolve the Free Roam spawn to an explicit `(edge_id, offset, heading)` at the TÜV, validated
@@ -216,8 +246,12 @@ ever runs in the renderer.
   4. [x] **Rechts vor links** when neither is present — the §8 default, not a fallback guess
   5. [x] Zone 30 is a **speed regime, never a priority rule** — must not suppress rechts-vor-links
   6. [x] Leaving a verkehrsberuhigter Bereich (Spielstraße) or a driveway/property always yields
-- [x] Load the `service` ways (already cached as `ways_extra_5km.json`) as non-drivable rule
-      context, so a driveway/property exit can be detected at a junction
+- [ ] **Not implemented, and probably not needed.** Loading `service` ways as non-drivable context
+      was planned so a driveway exit could be detected. But the player only ever drives the 6,001
+      drivable edges and can never *emerge from* a driveway, so §10's "leaving a property always
+      yields" cannot apply to their own movement. The calmed-area (Spielstraße) half of §10 *is*
+      implemented, via `highway=living_street`. Revisit only if the side panel should mention
+      traffic emerging from a driveway — informational, not a rule the player is scored on
 - [x] **Propagate Vorfahrtstraße across the junction** — it designates the road, not one approach.
       Without this, 322 approaches were wrong *in the unsafe direction* (185 on the same priority
       street, 137 on the crossing street) telling the driver they had priority from the right where
@@ -310,6 +344,12 @@ merely scored lower.
 - [ ] `app/renderer/ui/` — React: direction picker, side panel, HUD, conflict display
 - [ ] Rule lookup on entering an edge: read `(junction_id, incoming_edge_id)` from `rules.json`.
       **Lookup only — no rule computation at runtime**
+- [ ] **Cluster junction nodes that are one real intersection.** Tiefwerderweg × Schulenburgstraße
+      is 5 graph nodes (a one-way pair layout). Without clustering, the player is asked for several
+      direction choices while crossing what they see as a single junction
+- [ ] **Disambiguate the 78 ambiguous turn sets** — junctions where two options fall in the same
+      left/right/straight bucket. Three buttons cannot express those; show the street name on the
+      option or use a finer angular fan
 - [ ] Render hint-only legs visibly differently from scored ones — the distinction is a core
       correctness promise of the app, not a UI detail
 - [ ] Sign faces from Wikimedia Commons SVGs, instanced
@@ -331,9 +371,11 @@ merely scored lower.
         the anchor `52.5304357, 13.2144591`, on the edge leaving Pichelswerderstraße 9, heading
         toward the exam's own opening junction (Pichelswerderstraße → Freiheit). Not random, not
         last-visited — the real exam's first approach gets rehearsed every single session
-  - [ ] Pipeline consequence: `build_graph.py` must resolve and store the spawn as an explicit
+  - [x] Pipeline consequence: `build_graph.py` resolves and stores the spawn as an explicit
         `(edge_id, offset, heading)` anchored to the TÜV, validated as a real drivable edge —
-        not a bare lat/lon the renderer has to snap at runtime
+        not a bare lat/lon the renderer has to snap at runtime. Resolved to `e6261` on
+        **Pichelswerderstraße**, offset 1.26m, heading −117.0°, z 31.97m — the correct street by
+        name, which independently confirms the anchor
 - [ ] **Exam Simulation** — same world, constrained to a 2–4km loop, 25-minute budget, scoring by
       schwere/leichte Fehler
 - [ ] Both share one world and one dataset
