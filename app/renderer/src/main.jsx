@@ -8,13 +8,19 @@ const DATA = {
   graph: 'data/build/graph.json',
   rules: 'data/build/rules.json',
   buildings: 'data/build/buildings/manifest.json',
-  roads: 'data/build/roads/manifest.json'
+  roads: 'data/build/roads/manifest.json',
+  signs: 'data/build/signs/manifest.json'
 };
 
 const CHUNK_M = 500;
 const LOAD_RADIUS = 2;
 const EYE_HEIGHT = 1.6;
 const LOOK_AHEAD_M = 12;
+// Damping rates per second, not per frame. A per-frame lerp factor silently changes the
+// smoothing rate with frame rate; the gate measures 59.9fps but that is the vsync cap on this
+// panel, not a guarantee anywhere else.
+const POSITION_DAMPING = 13;
+const HEADING_DAMPING = 6;
 const TURN_ORDER = ['left', 'straight', 'right', 'uturn'];
 const TURN_ARROW = { left: '↙', straight: '↓', right: '↘', uturn: '↺' };
 
@@ -71,11 +77,21 @@ function tintRoads(geometry) {
     colour.setHex(SURFACE_COLOUR[Math.round(code)] ?? 0x333539));
 }
 
+function tintSigns(geometry) {
+  return tintByAttribute(geometry, '_SIGN', (colour, code) => {
+    const value = Math.round(code);
+    if (value === 205 || value === 206) colour.setHex(0xd83b3b);
+    else if (value === 306) colour.setHex(0xf1f0df);
+    else if (value === 301 || value === 311) colour.setHex(0x2c65b8);
+    else colour.setHex(0xe8e4d5);
+  });
+}
+
 function chunkIndex(chunks) {
   return new Map((chunks || []).map((chunk) => [`${chunk.cell[0]}:${chunk.cell[1]}`, chunk.file]));
 }
 
-function makeWorld(graph, rules, buildings, roads) {
+function makeWorld(graph, rules, buildings, roads, signs) {
   return {
     graph,
     rules: rules.rules,
@@ -83,7 +99,8 @@ function makeWorld(graph, rules, buildings, roads) {
     junctions: graph.junctions,
     buildingFiles: chunkIndex(buildings.chunks),
     roadFiles: chunkIndex(roads.surfaces),
-    markingFiles: chunkIndex(roads.markings)
+    markingFiles: chunkIndex(roads.markings),
+    signFiles: chunkIndex(signs.signs)
   };
 }
 
@@ -105,6 +122,31 @@ function optionsFor(world, edge, direction) {
     .filter((turn) => world.edges.has(turn.edge))
     .slice()
     .sort((a, b) => TURN_ORDER.indexOf(a.turn) - TURN_ORDER.indexOf(b.turn) || b.relative - a.relative);
+}
+
+// `relative` is the option's bearing against the approach: positive left, negative right
+// (measured across the whole graph: straight spans -39.7..39.9, left 40.3..139.8,
+// right -139.8..-40.3).
+function bearingHint(relative) {
+  const degrees = Math.round(Math.abs(relative));
+  if (degrees < 5) return 'dead ahead';
+  return `${degrees}° ${relative > 0 ? 'left' : 'right'}`;
+}
+
+// 80 approaches offer two options that land in the same left/straight/right bucket, and on 30
+// of them both options carry the same street name too — two identical buttons, with no way for
+// the driver to tell which is which. The turn table's own bearing separates every one of those
+// 30 (minimum separation measured at 13.7°), so show it, but only where it is needed: an angle
+// on every option would be noise on the 11,764 approaches that are already unambiguous.
+function disambiguate(options) {
+  const counts = new Map();
+  for (const option of options) {
+    const key = `${option.turn}|${option.name || ''}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return options.map((option) => (counts.get(`${option.turn}|${option.name || ''}`) > 1
+    ? { ...option, hint: bearingHint(option.relative) }
+    : option));
 }
 
 function ruleFor(world, edge, direction) {
@@ -195,7 +237,14 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1
   });
-  const markingMaterial = new THREE.LineBasicMaterial({ color: 0xf0ead6 });
+  const markingMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf0ead6,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1
+  });
+  const signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 
   const loader = new GLTFLoader();
   const loaded = new Set();
@@ -207,6 +256,7 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
       if (kind === 'buildings' && tintBuildings(node.geometry)) node.material = buildingMaterial;
       else if (kind === 'roads' && tintRoads(node.geometry)) node.material = roadMaterial;
       else if (kind === 'markings') node.material = markingMaterial;
+      else if (kind === 'signs' && tintSigns(node.geometry)) node.material = signMaterial;
     });
   }
 
@@ -251,6 +301,7 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
         addGlb(world.buildingFiles.get(cell), `building:${cell}`, 'buildings', 'buildings');
         addGlb(world.roadFiles.get(cell), `road:${cell}`, 'roads', 'roads');
         addGlb(world.markingFiles.get(cell), `marking:${cell}`, 'roads', 'markings');
+        addGlb(world.signFiles.get(cell), `sign:${cell}`, 'signs', 'signs');
       }
     }
   }
@@ -269,7 +320,8 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
       const jobs = [
         ...[...world.buildingFiles].map(([cell, file]) => [file, `building:${cell}`, 'buildings', 'buildings']),
         ...[...world.roadFiles].map(([cell, file]) => [file, `road:${cell}`, 'roads', 'roads']),
-        ...[...world.markingFiles].map(([cell, file]) => [file, `marking:${cell}`, 'roads', 'markings'])
+        ...[...world.markingFiles].map(([cell, file]) => [file, `marking:${cell}`, 'roads', 'markings']),
+        ...[...world.signFiles].map(([cell, file]) => [file, `sign:${cell}`, 'signs', 'signs'])
       ];
       for (let index = 0; index < jobs.length; index += concurrency) {
         await Promise.all(jobs.slice(index, index + concurrency).map((job) => addGlb(...job)));
@@ -279,6 +331,8 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
   };
 
   const clock = new THREE.Clock();
+  const lookMatrix = new THREE.Matrix4();
+  const targetQuaternion = new THREE.Quaternion();
   let snapped = false;
   let frame = 0;
 
@@ -300,14 +354,25 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
 
     const eye = position.clone();
     eye.y += EYE_HEIGHT;
-    if (snapped) camera.position.lerp(eye, 0.2);
-    else {
-      camera.position.copy(eye);
-      snapped = true;
-    }
     const focus = position.clone().addScaledVector(forward, LOOK_AHEAD_M);
     focus.y += EYE_HEIGHT;
-    camera.lookAt(focus);
+
+    if (snapped) {
+      // Exponential damping, so the rate is the same at any frame rate.
+      camera.position.lerp(eye, 1 - Math.exp(-POSITION_DAMPING * delta));
+      // Heading is damped as an orientation rather than set outright by lookAt. Picking a turn
+      // swaps the rail instantly, and calling lookAt every frame snapped the view with it; the
+      // camera now swings through the turn. It still only ever converges on the rail tangent,
+      // so the camera stays rail-locked — this smooths the approach to that heading, it does
+      // not let the view leave the rail.
+      lookMatrix.lookAt(camera.position, focus, camera.up);
+      targetQuaternion.setFromRotationMatrix(lookMatrix);
+      camera.quaternion.slerp(targetQuaternion, 1 - Math.exp(-HEADING_DAMPING * delta));
+    } else {
+      camera.position.copy(eye);
+      camera.lookAt(focus);
+      snapped = true;
+    }
     renderer.render(scene, camera);
     if (window.__mtd.firstFrameEpoch === null) window.__mtd.firstFrameEpoch = Date.now();
 
@@ -327,6 +392,7 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
       buildingMaterial.dispose();
       roadMaterial.dispose();
       markingMaterial.dispose();
+      signMaterial.dispose();
       renderer.dispose();
     }
   };
@@ -340,7 +406,7 @@ function describe(world, drive, arrived) {
     highway: drive.edge.highway,
     length: drive.length,
     rule: ruleFor(world, drive.edge, drive.direction),
-    options: optionsFor(world, drive.edge, drive.direction),
+    options: disambiguate(optionsFor(world, drive.edge, drive.direction)),
     arrived
   };
 }
@@ -382,10 +448,10 @@ function App() {
 
   useEffect(() => {
     let disposed = false;
-    Promise.all([readJson(DATA.graph), readJson(DATA.rules), readJson(DATA.buildings), readJson(DATA.roads)])
-      .then(([graph, rules, buildings, roads]) => {
+    Promise.all([readJson(DATA.graph), readJson(DATA.rules), readJson(DATA.buildings), readJson(DATA.roads), readJson(DATA.signs)])
+      .then(([graph, rules, buildings, roads, signs]) => {
         if (disposed) return;
-        const world = makeWorld(graph, rules, buildings, roads);
+        const world = makeWorld(graph, rules, buildings, roads, signs);
         const edge = world.edges.get(graph.spawn.edge);
         if (!edge) throw new Error(`Spawn edge ${graph.spawn.edge} is missing from the graph`);
         const drive = {};
@@ -445,7 +511,7 @@ function App() {
             onClick={() => take(option)}
           >
             <span className="turn-arrow">{TURN_ARROW[option.turn] || '↓'}</span>
-            <span><b>{option.turn === 'uturn' ? 'turn around' : option.turn}</b><small>{option.name || 'Unnamed street'}</small></span>
+            <span><b>{option.turn === 'uturn' ? 'turn around' : option.turn}</b><small>{option.name || 'Unnamed street'}{option.hint ? ` · ${option.hint}` : ''}</small></span>
           </button>)}
         </div>
         <footer className="panel-footer"><span>RAIL-LOCKED CAMERA</span><span>DATA-CONFIRMED RULES</span></footer>

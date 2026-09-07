@@ -24,6 +24,7 @@ from config import ANCHOR_LAT, ANCHOR_LON, BUILD, CRS_UTM33, CRS_WGS84, RAW
 
 CHUNK_M = 500
 MARKING_LIFT_M = 0.06  # painted lines sit just above the surface, not in it
+MARKING_WIDTH_M = 0.12
 ROAD_LIFT_M = 0.02
 
 
@@ -187,11 +188,22 @@ def build_markings(sample, ax, ay, out_dir) -> dict:
             centre = points.mean(axis=0)
             key = (int(centre[0] // CHUNK_M), int(centre[1] // CHUNK_M))
             chunk = chunks[key]
-            base = len(chunk["pos"])
-            for (x, y), zz in zip(points, z):
-                chunk["pos"].append((x, y, zz))
             for i in range(len(points) - 1):
-                chunk["idx"].extend((base + i, base + i + 1))
+                start = points[i]
+                end = points[i + 1]
+                direction = end - start
+                length = np.linalg.norm(direction)
+                if length < 1e-6:
+                    continue
+                normal = np.array([-direction[1], direction[0]]) / length * (MARKING_WIDTH_M / 2)
+                base = len(chunk["pos"])
+                chunk["pos"].extend([
+                    (start[0] + normal[0], start[1] + normal[1], z[i]),
+                    (start[0] - normal[0], start[1] - normal[1], z[i]),
+                    (end[0] - normal[0], end[1] - normal[1], z[i + 1]),
+                    (end[0] + normal[0], end[1] + normal[1], z[i + 1]),
+                ])
+                chunk["idx"].extend((base, base + 1, base + 2, base, base + 2, base + 3))
 
     manifest = []
     total = 0
@@ -199,11 +211,11 @@ def build_markings(sample, ax, ay, out_dir) -> dict:
         name = f"marking_{cx}_{cy}.glb"
         size = write_glb(out_dir / name,
                          {"POSITION": np.array(chunk["pos"], dtype=np.float32)},
-                         chunk["idx"], 1)
+                         chunk["idx"], 4)
         total += size
         manifest.append({"file": name, "cell": [cx, cy],
                          "vertices": len(chunk["pos"]),
-                         "segments": len(chunk["idx"]) // 2, "bytes": size})
+                         "segments": len(chunk["idx"]) // 6, "bytes": size})
     return {"chunks": manifest, "bytes": total}
 
 

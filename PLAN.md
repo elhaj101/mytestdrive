@@ -32,10 +32,10 @@ Nine pipeline stages exist under `pipeline/`, and the Electron app that drives t
 they produce now runs: TÜV spawn, ring-streamed chunks, a resolved rule on every approach it
 enters, 59.9fps with all 992 chunks resident.
 
-**Phase 6's four open items:** sign geometry (no `build_signs.py` exists, so none of the 16,342
-surveyed signs appear in the world), junction clustering, lane markings as textured quads, and a
-smooth heading transition through a turn. Renderer/pipeline contract and the defects it has
-already cost: [docs/app-notes.md](docs/app-notes.md).
+**Phase 6's remaining items:** Wikimedia sign-face artwork and physical junction clustering.
+Surveyed sign geometry, lane-marking decals, smooth turns, and duplicate-choice disambiguation now
+exist in the app. Renderer/pipeline contract and the defects it has already cost:
+[docs/app-notes.md](docs/app-notes.md).
 
 **Four design assumptions failed on measurement and were replaced** — each recorded inline below
 rather than quietly corrected: the building extrapolation (+49%), the "12,598 ways" figure
@@ -284,7 +284,8 @@ Prove the chosen stack clears the bar before building the real app on it. One sh
 discriminate nothing).
 
 - [x] Electron shell + Three.js scene + React side panel
-- [ ] Full 5km payload resident: per-building meshes + `InstancedMesh` for the 16,342 signs
+- [x] Full 5km payload resident: chunked building, road, marking and surveyed-sign geometry
+      (16,342 signs; sign geometry is merged per 500m chunk rather than `InstancedMesh`)
 - [x] Graph-predictive chunk load/unload keyed to the next candidate edges (not general spatial
       streaming — the rail-locked camera makes the next edges knowable)
 - [x] Rail-locked camera: position along current edge, heading = travel direction, reorients on
@@ -385,7 +386,7 @@ merely scored lower.
       the streets would actually look like. 4,927 surveyed roadway polygons → 771,740 triangles in
       342 chunks (21.0 MB), 19,530 marking features → 88,374 segments (2.1 MB), 0 failures. Draped
       onto the same height surface as the graph. Verified in the preview from a driver's eye view
-- [ ] Promote markings from 1px lines to textured quads (decals). `LineBasicMaterial` ignores
+- [x] Promote markings from 1px lines to textured quads (decals). `LineBasicMaterial` ignores
       `linewidth` in WebGL, so lines can never be more than a hairline
 - [ ] Optionally add footways (`cl_gehweg`, 62,966) and kerbs (`bd_bordstein`, 43,021) — available,
       not yet fetched, purely cosmetic
@@ -401,7 +402,7 @@ merely scored lower.
       prompting (6,528 such approaches against 3,957 with a real choice), so a clustered junction
       only prompts more than once where its interior nodes genuinely branch. Measure how many of
       the 5 Tiefwerderweg nodes still prompt before designing the clustering
-- [~] **Disambiguate the 78 ambiguous turn sets** — junctions where two options fall in the same
+- [x] **Disambiguate the 78 ambiguous turn sets** — junctions where two options fall in the same
       left/right/straight bucket. **Half done, and the remainder is now measured.** The panel no
       longer has three fixed buttons: it renders one button per actual option, labelled with the
       street it leads to, which is the plan's "show the street name" fix. That resolves 50 of the
@@ -412,8 +413,9 @@ merely scored lower.
       on `j11426958630`)
 - [x] Render hint-only legs visibly differently from scored ones — the distinction is a core
       correctness promise of the app, not a UI detail
-- [ ] Sign faces from Wikimedia Commons SVGs, instanced
-- [ ] Smooth heading transition through a turn (the one piece of camera motion that exists)
+- [ ] Sign faces from Wikimedia Commons SVGs, instanced. Surveyed sign plates and poles now render;
+      the public-domain artwork mapping remains.
+- [x] Smooth heading transition through a turn (the one piece of camera motion that exists)
 
 **Optional polish, explicitly not required:**
 
@@ -461,11 +463,9 @@ Phase 4  rule engine ...................... DONE — both known junctions valida
 Phase 5  Electron spike ................... DONE — gate CLEARS all four numbers
          ├── 5a Tauri  ...................... unnecessary, not pending
          └── 5b Godot  ...................... unnecessary (fps miss was fill rate, not culling)
-Phase 6  build the app .................... IN PROGRESS — drivable; 4 items open
-         ├── signs (no build_signs.py yet) .. largest remaining unit
-         ├── junction clustering ............ partly absorbed by single-option pass-through
-         ├── markings as textured quads ..... needs a build_roads.py change + re-run
-         └── smooth heading through a turn .. renderer only
+Phase 6  build the app .................... IN PROGRESS — drivable; 2 items open
+         ├── sign artwork ................... surveyed plates render; Wikimedia faces remain
+         └── junction clustering ............ partly absorbed by single-option pass-through
 Phase 7  Free Roam ........................ DONE — starts at the TÜV spawn
 ```
 
