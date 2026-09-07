@@ -24,7 +24,7 @@ import numpy as np
 from mapbox_earcut import triangulate_float64
 from pyproj import Transformer
 
-from config import ANCHOR_LAT, ANCHOR_LON, BUILD, CRS_UTM33, CRS_WGS84
+from config import ANCHOR_LAT, ANCHOR_LON, BUILD, CRS_UTM33, CRS_WGS84, scaled_elevation
 
 CHUNK_M = 500
 QUANTISE = 100.0  # vertex dedup grid, 1cm
@@ -180,7 +180,7 @@ def main() -> None:
 
             for triangle in triangles:
                 for point in triangle:
-                    x, y, z = point[0] - ax, point[1] - ay, point[2]
+                    x, y, z = point[0] - ax, point[1] - ay, scaled_elevation(point[2])
                     vkey = (round(x * QUANTISE), round(y * QUANTISE), round(z * QUANTISE),
                             local_index)
                     existing = chunk["verts"].get(vkey)

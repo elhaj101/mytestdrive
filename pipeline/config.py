@@ -6,6 +6,15 @@ ANCHOR_LAT = 52.5304357
 ANCHOR_LON = 13.2144591
 RADIUS_M = 5000
 
+# Berlin is broadly flat, but preserving 40% of measured relief keeps bridges and
+# the few genuinely high/low areas legible without letting noisy samples dominate.
+ELEVATION_SCALE = 0.4
+ELEVATION_REFERENCE_M = 31.97  # measured ground height at the TÜV spawn
+
+
+def scaled_elevation(z: float) -> float:
+    return ELEVATION_REFERENCE_M + ELEVATION_SCALE * (z - ELEVATION_REFERENCE_M)
+
 # LoD2 tiles are ETRS89 / UTM33N on a 1km grid; WFS and OSM speak WGS84.
 CRS_WGS84 = "EPSG:4326"
 CRS_UTM33 = "EPSG:25833"

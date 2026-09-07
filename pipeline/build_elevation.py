@@ -21,7 +21,7 @@ import numpy as np
 from pyproj import Transformer
 from scipy.spatial import cKDTree
 
-from config import ANCHOR_LAT, ANCHOR_LON, BUILD, CRS_UTM33, CRS_WGS84
+from config import ANCHOR_LAT, ANCHOR_LON, BUILD, CRS_UTM33, CRS_WGS84, scaled_elevation
 
 NEIGHBOURS = 8
 SAMPLE_GRID_M = 2.0  # dedup ground samples to this spacing
@@ -47,7 +47,7 @@ def ground_samples() -> np.ndarray:
                 for x, y, z in polygon["exterior"]:
                     key = (round((x - ax) / SAMPLE_GRID_M), round((y - ay) / SAMPLE_GRID_M))
                     if key not in seen:
-                        seen[key] = z
+                        seen[key] = scaled_elevation(z)
     points = np.array(
         [[k[0] * SAMPLE_GRID_M, k[1] * SAMPLE_GRID_M, z] for k, z in seen.items()],
         dtype=np.float64,

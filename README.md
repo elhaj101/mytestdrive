@@ -233,8 +233,10 @@ Every number here comes from running the pipeline. Reconciliations and method:
 
 Neither OSM nor the WFS roadway layer carries elevation. Height is interpolated by IDW over
 **430,929 ground samples** taken from the LoD2 `GroundSurface` polygons — no extra download.
-Median grade is **0.49%**, which is right for a flat city. Bridges run straight between abutments
-rather than dipping to the water beneath.
+The world preserves **40% of measured relief** around the TÜV reference height (31.97m ASL):
+Berlin should read as flat, but genuinely high or low places and bridge approaches should not
+collapse into one plane. Bridges run straight between abutments rather than dipping to the water
+beneath. The rebuilt graph range is 30.6–54.2m ASL after scaling.
 
 Where buildings are sparse the estimate weakens, so it is flagged rather than hidden:
 `z_confident: false` on 265 junctions (4.4%) and `grade_suspect: true` on 62 edges (0.9%).
