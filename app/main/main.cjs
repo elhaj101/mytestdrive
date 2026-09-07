@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 
 const projectRoot = path.resolve(__dirname, '../..');
+let mainWindow;
 
 ipcMain.handle('asset:read', async (_event, relativePath, encoding = null) => {
   const assetPath = path.resolve(projectRoot, relativePath);
@@ -14,7 +15,7 @@ ipcMain.handle('asset:read', async (_event, relativePath, encoding = null) => {
 });
 
 function createWindow() {
-  const window = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
@@ -26,7 +27,13 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs')
     }
   });
-  window.loadFile(path.join(projectRoot, 'app/renderer/dist/index.html'));
+  mainWindow.loadFile(path.join(projectRoot, 'app/renderer/dist/index.html'));
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error(`Renderer failed to load (${errorCode}): ${errorDescription}`);
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 }
 
 app.whenReady().then(() => {
