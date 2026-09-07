@@ -296,6 +296,81 @@ wanted.
 
 ---
 
+## Phase 4 — rule engine
+
+Resolves right of way for all **11,844 (junction, incoming edge) pairs**. Runs once at build
+time; the renderer only does a lookup.
+
+| Resolved rule | Pairs | Share |
+|---|---|---|
+| Rechts vor links (§8) | 10,063 | 85.0% |
+| Priority road (Vorfahrtstraße) | 599 | 5.1% |
+| Signal (Lichtzeichenanlage) | 472 | 4.0% |
+| Vorfahrt gewähren (signposted) | 397 | 3.4% |
+| Yield inferred from a crossing priority road | 211 | 1.8% |
+| Calmed-area exit (§10) | 74 | 0.6% |
+| Stop | 33 | 0.3% |
+| **Flagged hint-only, not scored** | **872** | **7.4%** |
+
+85% rechts-vor-links is the expected shape for residential Berlin.
+
+### Sign-to-road matching: bearing failed, distance-to-polyline worked
+
+The research note's design said to match signs to legs **by bearing from the junction**. Measured,
+that is too weak: median angular error to the correct leg is **48°**, and only 30% of signs land
+within 30°. The cause is physical — a sign stands at the corner, 5–15m from the junction centre
+and offset laterally, so the lateral offset dominates the bearing.
+
+Replaced with **perpendicular distance to the road's own polyline**, plus the surveyed `strasse`
+name, which matches a leg name 83% of the time. Unassigned priority signs fell from **900 to 253**
+(and ~223 of the remainder are simply outside the drivable graph, in the bbox but beyond the
+circle).
+
+### Signals: matched by node id, not proximity
+
+Only **53 of 642** OSM signal nodes are junction nodes; **515 are stop lines partway along an
+edge**. Proximity matching mis-assigns these wherever junctions stand close together. Matching by
+OSM node id is exact, and `traffic_signals:direction` (present on 389 nodes) states which way of
+travel the signal faces, placing it on the correct approach. Pedestrian-crossing signals
+(`crossing=traffic_signals`, 14 nodes) are excluded — they do not govern junction right of way.
+
+### The safety bug this phase found
+
+A Vorfahrtstraße sign designates the **road**, not the single approach it stands on. Resolving
+per-sign only, **322 approaches were wrong in the unsafe direction**:
+
+- 185 approaches on the *same* priority street, on the far side of the junction, defaulted to
+  rechts-vor-links
+- 137 approaches on the *crossing* street also defaulted to rechts-vor-links — but
+  rechts-vor-links does not apply at all where a priority road crosses
+
+Both would have told the driver they had priority from the right where they must in fact yield.
+Fixed with a junction-level pass: priority propagates to same-named approaches (scored, since the
+survey confirms that street), and crossing approaches become `yield_inferred` — **flagged
+hint-only**, because no sign on *that* approach confirms it. Residual cases: **0**.
+
+### Acceptance tests — both pass
+
+Validated against the two junctions hand-verified in the vault before any code existed:
+
+**Pichelswerderstraße × Freiheit** (the exam's own opening junction) — found `205`
+(Vorfahrt gewähren) on the Pichelswerderstraße approach and `306` (Vorfahrtstraße) on Freiheit,
+exactly as recorded. OSM independently confirms three directional signals here, so the junction is
+both signposted *and* signalized; the signal correctly takes precedence, with the fixed sign
+retained for the panel to show.
+
+**Tiefwerderweg × Schulenburgstraße** — resolves to **rechts vor links, scored**, on every
+approach. Exercises the §8 default with no sign present.
+
+### Finding: one real junction can be several graph nodes
+
+Tiefwerderweg × Schulenburgstraße is **5 separate junction nodes** in OSM — a one-way pair layout
+where every incident edge is `oneway=1`. A driver experiences one junction. Phase 6 needs to
+cluster nearby nodes for the side panel, or the player will be asked to make several direction
+choices while crossing what is visibly a single intersection.
+
+---
+
 ## Gate assessment
 
 ### Buildings: +48.9% over extrapolation

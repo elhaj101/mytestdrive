@@ -132,6 +132,10 @@ def build() -> dict:
                         "way_id": way["id"],
                         "from": segment[0],
                         "to": segment[-1],
+                        # OSM node ids along this edge. Traffic-signal nodes are
+                        # usually stop lines mid-edge, so matching them by id is
+                        # exact where matching by proximity is guesswork.
+                        "nodes": segment,
                         "points": [[round(x, 2), round(y, 2)] for x, y in points],
                         "length_m": round(length, 2),
                         "oneway": oneway,

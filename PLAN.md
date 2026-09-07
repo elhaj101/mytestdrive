@@ -199,32 +199,41 @@ It blocks Phase 5.
 Pure Python, build-time only. Runs once and bakes results into per-junction data — no StVO logic
 ever runs in the renderer.
 
-- [ ] `pipeline/build_rules.py`
-- [ ] Match each sign to its **approach leg by bearing** from the junction, not by radius alone
-      (a sign 20m down the wrong street beats the right one on raw distance)
-- [ ] Search radius ~30–50m from the junction, tuned against the two named test junctions below
-- [ ] Match OSM signal nodes to legs the same way
-- [ ] Resolve each `(junction_id, incoming_edge_id)` in **StVO precedence order**:
-  1. [ ] Police officer / hand signal — not present in any source; structurally absent here
-  2. [ ] Signal (Ampel) overrides fixed signage on the same leg
-  3. [ ] Fixed priority signage (Vorfahrtstraße / Vorfahrt gewähren / Stop) overrides the default
-  4. [ ] **Rechts vor links** when neither is present — the §8 default, not a fallback guess
-  5. [ ] Zone 30 is a **speed regime, never a priority rule** — must not suppress rechts-vor-links
-  6. [ ] Leaving a verkehrsberuhigter Bereich (Spielstraße) or a driveway/property always yields
-- [ ] Load the `service` ways (already cached as `ways_extra_5km.json`) as non-drivable rule
+- [x] `pipeline/build_rules.py`
+- [x] ~~Match each sign by **bearing** from the junction~~ — **tried and rejected on measurement.**
+      Median angular error to the correct leg is 48 degrees, because a sign stands at the corner
+      where lateral offset dominates the bearing. Replaced by **perpendicular distance to the
+      road's polyline** plus the surveyed `strasse` name (83% match rate). Unassigned priority
+      signs fell from 900 to 253
+- [x] Search radius 40m from the junction, 18m lateral tolerance
+- [x] Match OSM signal nodes **by node id, not proximity** — only 53 of 642 are junction nodes,
+      515 are mid-edge stop lines. `traffic_signals:direction` places them on the right approach;
+      pedestrian-crossing signals are excluded
+- [x] Resolve each `(junction_id, incoming_edge_id)` in **StVO precedence order**:
+  1. [x] Police officer / hand signal — not present in any source; structurally absent here
+  2. [x] Signal (Ampel) overrides fixed signage on the same leg
+  3. [x] Fixed priority signage (Vorfahrtstraße / Vorfahrt gewähren / Stop) overrides the default
+  4. [x] **Rechts vor links** when neither is present — the §8 default, not a fallback guess
+  5. [x] Zone 30 is a **speed regime, never a priority rule** — must not suppress rechts-vor-links
+  6. [x] Leaving a verkehrsberuhigter Bereich (Spielstraße) or a driveway/property always yields
+- [x] Load the `service` ways (already cached as `ways_extra_5km.json`) as non-drivable rule
       context, so a driveway/property exit can be detected at a junction
-- [ ] Emit a resolved rule **and** a conflict flag per leg
-- [ ] Where sources disagree (OSM signal with no matching WFS mast; signal + Vorfahrtstraße on one
+- [x] **Propagate Vorfahrtstraße across the junction** — it designates the road, not one approach.
+      Without this, 322 approaches were wrong *in the unsafe direction* (185 on the same priority
+      street, 137 on the crossing street) telling the driver they had priority from the right where
+      they must yield. Residual after fix: 0
+- [x] Emit a resolved rule **and** a conflict flag per leg
+- [x] Where sources disagree (OSM signal with no matching WFS mast; signal + Vorfahrtstraße on one
       leg with no clear precedence) → **flag conflict, downgrade to hint-only, not scored**
-- [ ] Emit `data/build/rules.json`, keyed `(junction_id, incoming_edge_id)`
+- [x] Emit `data/build/rules.json`, keyed `(junction_id, incoming_edge_id)`
 
 ### Validation against the two hand-verified junctions
 
-- [ ] **Pichelswerderstraße → Freiheit** — the exam's own opening junction. Signposted:
+- [x] **Pichelswerderstraße → Freiheit** — the exam's own opening junction. Signposted:
       Vorfahrt-gewähren onto a Vorfahrtstraße, near a Bahnübergang. Exercises "fixed sign wins"
-- [ ] **Tiefwerderweg / Schulenburgstraße** — 4-leg, unsignposted. Exercises the §8
+- [x] **Tiefwerderweg / Schulenburgstraße** — 4-leg, unsignposted. Exercises the §8
       rechts-vor-links branch with no sign present
-- [ ] Both must resolve correctly before the engine is trusted on the other ~5,500 junctions
+- [x] Both must resolve correctly before the engine is trusted on the other ~5,500 junctions
 
 ---
 
@@ -352,7 +361,7 @@ Phase 1  fetch + MEASURE .................. DONE — gate tripped on buildings, 
 Phase 2  geometry, Path A ................. DONE — roofs verified real in Three.js
 Phase 3  road graph ....................... DONE — 6,943 edges / 6,001 junctions
 Phase 3b road elevation ................... DONE — IDW over LoD2 ground, low confidence flagged
-Phase 4  rule engine ...................... validate on 2 known junctions
+Phase 4  rule engine ...................... DONE — both known junctions validate
 Phase 5  Electron spike ................... GATE: numeric bar, then stop rule
          ├── 5a Tauri  (only if size/cold-start matters)
          └── 5b Godot  (only if fps missed)
