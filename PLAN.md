@@ -228,6 +228,13 @@ merely scored lower.
 
 - [ ] **Free Roam** — full 5km network, no timer, no fail state, panel informs on every street
       entered. This is where the outer ring's study value lives
+  - [ ] **Fixed spawn at the TÜV Spandau building** (decided 2026-09-07). Every session starts at
+        the anchor `52.5304357, 13.2144591`, on the edge leaving Pichelswerderstraße 9, heading
+        toward the exam's own opening junction (Pichelswerderstraße → Freiheit). Not random, not
+        last-visited — the real exam's first approach gets rehearsed every single session
+  - [ ] Pipeline consequence: `build_graph.py` must resolve and store the spawn as an explicit
+        `(edge_id, offset, heading)` anchored to the TÜV, validated as a real drivable edge —
+        not a bare lat/lon the renderer has to snap at runtime
 - [ ] **Exam Simulation** — same world, constrained to a 2–4km loop, 25-minute budget, scoring by
       schwere/leichte Fehler
 - [ ] Both share one world and one dataset
