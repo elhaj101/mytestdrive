@@ -20,10 +20,10 @@ Radius: 5km. Center LoD2 tile: `LoD2_378_5821`.
 - [x] `README.md` — settled decisions, verified figures, data sources, gotchas
 - [x] `PLAN.md` — this file
 - [x] `git init -b main` + first commit
-- [ ] Python venv: `python3 -m venv .venv && source .venv/bin/activate`
-- [ ] Install pipeline deps: `requests`, `shapely`, `trimesh`, `pygltflib`, `lxml`
-      (+ `citygml-tools` as an external CLI, or `cjio` if staying pure-Python)
-- [ ] Freeze: `pip freeze > pipeline/requirements.txt`, commit the lockfile
+- [x] Python venv: `python3 -m venv .venv && source .venv/bin/activate`
+- [x] Install pipeline deps: `requests`, `shapely`, `trimesh`, `pygltflib`, `lxml`, `pyproj`
+      (no `citygml-tools` — see Phase 2; there is no Java runtime here and the data is CityGML 1.0)
+- [x] Freeze: `pip freeze > pipeline/requirements.txt`, commit the lockfile
 
 **No remote.** The GitHub remote gets created from this folder later, deliberately not now.
 
@@ -37,71 +37,110 @@ never measured.** Nothing downstream should be sized or designed until they are 
 
 ### 1a. Road graph
 
-- [ ] `pipeline/fetch_osm.py` — Overpass query, drivable ways, 5km radius from the anchor
-- [ ] Fall back to `overpass.kumi.systems/api/interpreter` if rate-limited
-- [ ] Cache the raw response to `data/raw/osm/` so re-runs cost nothing
-- [ ] Verify against the known figure: **12,598 raw drivable ways**
-- [ ] Record actual signal-node count (expected **642**)
+- [x] `pipeline/fetch_osm.py` — Overpass query, drivable ways, 5km radius from the anchor
+- [x] Fall back to `overpass.kumi.systems/api/interpreter` if rate-limited
+- [x] Cache the raw response to `data/raw/osm/` so re-runs cost nothing
+- [x] Verify against the known figure: 12,598 → **reconciled as `drivable+service` (12,591).
+      Drivable-only is 6,001, and that is the traversable network**
+- [x] Record actual signal-node count (expected **642**) → **642, exact**
 
 ### 1b. Traffic signs and roadway surfaces
 
-- [ ] `pipeline/fetch_strassenbefahrung.py` — WFS 2.0, bbox around the anchor
-- [ ] **Use lat,lon order in the bbox** with `urn:ogc:def:crs:EPSG::4326`. Wrong order returns
+- [x] `pipeline/fetch_strassenbefahrung.py` — WFS 2.0, bbox around the anchor
+- [x] **Use lat,lon order in the bbox** with `urn:ogc:def:crs:EPSG::4326`. Wrong order returns
       `numberMatched=0` silently, with no error
-- [ ] Assert `numberMatched > 0` explicitly, so a silent-zero can never pass unnoticed
-- [ ] Pull `aa_verkehrszeichen` — verify against the known figure: **16,342 signs**
-- [ ] Pull `cm_fahrbahn` (roadway polygons) — needed for road ribbon meshes
-- [ ] Pull `be_fahrbahnmarkierunglinie` (lane markings)
-- [ ] Cache all responses to `data/raw/wfs/`
+- [x] Assert `numberMatched > 0` explicitly, so a silent-zero can never pass unnoticed
+- [x] Pull `aa_verkehrszeichen` — verify against the known figure: **16,342 signs**
+- [x] Pull `cm_fahrbahn` (roadway polygons) — needed for road ribbon meshes
+- [x] Pull `be_fahrbahnmarkierunglinie` (lane markings)
+- [x] Cache all responses to `data/raw/wfs/`
 
 ### 1c. LoD2 buildings
 
-- [ ] `pipeline/fetch_lod2.py`
-- [ ] **Fetch the sub-feed** `https://gdi.berlin.de/data/a_lod2/atom/0.atom`, not the top-level
+- [x] `pipeline/fetch_lod2.py`
+- [x] **Fetch the sub-feed** `https://gdi.berlin.de/data/a_lod2/atom/0.atom`, not the top-level
       feed — the top level is a single entry pointing at it
-- [ ] Compute the tile set overlapping the 5km circle (expect **101 candidate, 98 present**)
-- [ ] Confirm the 3 missing tiles are the Havel/Wannsee water gap
+- [x] Compute the tile set overlapping the 5km circle (expect **101 candidate, 98 present**)
+- [x] Confirm the 3 missing tiles are the Havel/Wannsee water gap
       (`LoD2_378_5816`, `LoD2_379_5816`, `LoD2_379_5817`) — 30-second visual map check
-- [ ] Download all 98 to `data/raw/lod2/`, record total bytes on disk
+- [x] Download all 98 to `data/raw/lod2/`, record total bytes on disk
 
 ### 1d. Gate — measure, then compare
 
-- [ ] Record the **real** building count (extrapolation said ~46,700)
-- [ ] Record the **real** processed-edge count after junction-splitting (said ~6,260)
-- [ ] Record the **real** junction count (said ~5,500)
-- [ ] Write the measured numbers into `docs/measured-counts.md` and correct README.md
-- [ ] Correct the vault research note too, so the extrapolation is not re-used elsewhere
+- [x] Record the **real** building count (extrapolation said ~46,700) → **69,538, +49%**
+- [ ] Record the **real** processed-edge count after junction-splitting (said ~6,260) → Phase 3
+- [ ] Record the **real** junction count (said ~5,500) → Phase 3
+- [x] Write the measured numbers into `docs/measured-counts.md` and correct README.md
+- [x] Correct the vault research note too, so the extrapolation is not re-used elsewhere
 
 > **Gate condition.** If measured counts land within roughly ±20% of the extrapolation, the
 > architecture in README stands — carry on to Phase 2. If they come in materially higher
 > (especially buildings), revisit payload size and chunking *before* writing renderer code, not
 > after.
 
+### Gate result — TRIPPED, resolved, proceeding
+
+Every *measured* baseline reproduced exactly (642 signals, 16,342 signs, 101/98 tiles, same 3
+missing tiles by name, same centre tile). Both misses were **extrapolations** — which is what the
+gate was for.
+
+1. **Buildings 69,538, not ~46,700 (+49%).** Payload stays trivial (~5.6MB), but ~69k draw calls
+   would not hold 60fps, colliding with Path A's discrete-per-building addressability.
+   **Resolution: per-chunk merged geometry with a per-building id vertex attribute** — carried
+   into Phase 2 and Phase 5 below.
+2. **"12,598 drivable ways" was `drivable + service`.** Drivable-only is **6,001**. Service ways
+   are parking aisles and driveways the player must not drive — carried into Phase 3 below.
+3. **1,572 MB uncompressed CityGML** → Phase 2 must parse streaming, not into memory.
+
+Edge and junction counts remain extrapolated *and* were scaled from the service-inflated figure,
+so both are probably well too high. Phase 3 measures them.
+
 ---
 
-## Phase 2 — Geometry, Path A (CityGML → CityJSON → glTF)
+## Phase 2 — Geometry, Path A (CityGML 1.0 → intermediate → glTF)
 
-- [ ] `pipeline/convert_citygml.py` — CityGML → **CityJSON** via `citygml-tools`, cached as its
-      own stage in `data/build/cityjson/` (conversion is slow; never redo it implicitly)
-- [ ] `pipeline/build_buildings.py` — CityJSON solids → simplified per-building meshes
+**Settled 2026-09-07:** no `citygml-tools`, no CityJSON step. The archives are **CityGML 1.0**
+(`http://www.opengis.net/citygml/1.0`), which that tool doesn't target, and it needs a Java
+runtime not installed here. Parse the GML directly with **streaming `lxml.etree.iterparse`** —
+which the 1,572 MB uncompressed volume requires regardless of tooling.
+
+- [ ] `pipeline/parse_citygml.py` — streaming `iterparse` over each tile's `.xml` inside its zip,
+      clearing elements as it goes. **Never load a whole tile into memory**
+- [ ] Extract per building: stable id, `gml:Solid` / `gml:MultiSurface` polygons, ground height
+- [ ] **Note the archives hold `.xml`, not `.gml`** — filtering on `.gml` matches nothing and
+      silently yields zero buildings
+- [ ] Cache a compact per-tile intermediate to `data/build/parsed/` so re-runs skip the 1.5 GB
+      parse entirely
+- [ ] `pipeline/build_buildings.py` — intermediate → simplified meshes
 - [ ] Preserve **real roof geometry** — the whole reason Path A was chosen over extrusion
-- [ ] Keep each building a **discrete, addressable object** with a stable id. Do not merge into
-      one mesh: per-building addressability is what enables landmark cues and optional
-      occlusion-fade later
-- [ ] Reproject to a local metric frame centered on the anchor (avoid float precision loss from
-      raw UTM/WGS84 coordinates at render time)
+- [ ] Give every building a **stable id** and keep it addressable
+- [ ] **Batch into per-chunk merged geometry carrying building id as a vertex attribute.** At
+      69,538 buildings, one `Mesh` each means ~69k draw calls and no 60fps. Merging per chunk
+      keeps addressability (shader-side alpha for fade/highlight; split out only the few buildings
+      actually being faded) without paying per-building draw calls
+- [ ] Chunk on the graph, not a blind grid — see the navigation model in the vault note
+- [ ] Reproject to a local metric frame centred on the anchor (UTM33 northings are ~5.8M; raw
+      coordinates lose float precision at render time)
 - [ ] Export glTF/GLB via `pygltflib` into `data/build/buildings/`
-- [ ] Record the real payload size (old 2.2km build: 30 tiles ≈ 1MB; estimate here 3.3–3.9MB)
+- [ ] Record real payload size (estimate ~5.6MB at the old build's ~84 bytes/building)
 
 **Checkpoint:** load the output in a throwaway Three.js `GLTFLoader` page and confirm roofs look
-like real roofs. If they look like flat boxes, the CityJSON solids were flattened somewhere in
-the conversion — fix that before continuing, it invalidates Path A.
+like real roofs. If they look like flat boxes, the solids were flattened somewhere in the parse —
+fix that before continuing, it invalidates Path A.
 
 ---
 
 ## Phase 3 — Routable road graph
 
 - [ ] `pipeline/build_graph.py` — raw OSM ways → routable graph
+- [ ] **Build the graph from the 6,001 drivable ways only.** Exclude `service`, `track` and
+      `pedestrian` — the player must not be able to drive a parking aisle or a driveway
+- [ ] Keep service ways alongside, flagged `drivable: false`, as rule context for the "leaving a
+      driveway always yields" rule
+- [ ] Measure and record the real edge and junction counts — these close the last open item of the
+      Phase 1 gate, and both extrapolations were scaled from the service-inflated way count
+- [ ] Resolve the Free Roam spawn to an explicit `(edge_id, offset, heading)` at the TÜV, validated
+      as a real drivable edge
 - [ ] Split ways at junctions into edges; assign stable `edge_id` / `junction_id`
 - [ ] Respect one-way tags — the player must not be able to drive the wrong way
 - [ ] Compute per-edge bearings at each endpoint (needed by both the rule matcher and the

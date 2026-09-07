@@ -46,17 +46,34 @@ Two useful consequences: buildings sit beside the view rather than in front of i
 is optional polish, not a core system), and chunk load/unload can be **predictive along the
 graph** — the next candidate edges are always known — instead of general spatial streaming.
 
-## Verified figures (measured 2026-09-07, not estimated)
+## Measured figures (Phase 1 complete, 2026-09-07)
 
-| Metric | 2.2km (old build) | 5km (verified) | Factor |
-|---|---|---|---|
-| Raw drivable OSM ways | 3,402 | **12,598** | 3.70x |
-| Traffic signs (WFS exact hit count) | 4,339 | **16,342** | 3.77x |
-| Traffic signal nodes (OSM) | 197 | **642** | 3.26x |
-| LoD2 building tiles | ~26 | **98 present** of 101 candidate | 3.77x |
+All measured by running the pipeline. Full detail and reconciliation:
+[docs/measured-counts.md](docs/measured-counts.md).
 
-The consistent scale factor is **3.7–3.8x, not the naive area ratio of 5.16x** — density falls off
-toward the outer ring. Use 3.7–3.8x for any further estimate.
+| Metric | Measured at 5km |
+|---|---|
+| **Drivable OSM ways** (the traversable network) | **6,001** |
+| `service` ways (parking aisles, driveways — *not* drivable) | 6,590 |
+| Traffic signal nodes (OSM) | **642** |
+| Traffic signs (WFS) | **16,342** in bbox / **13,253** in circle |
+| Signal masts (WFS `at_mast_lsa`) | 1,793 bbox / 1,508 circle |
+| LoD2 tiles | **98 present** of 101 candidate |
+| **Buildings** | **69,538** |
+| Raw LoD2 download / uncompressed | 182 MB / 1,572 MB |
+| Graph edges, junctions | not yet measured — Phase 3 |
+
+**Two corrections to earlier figures, both worth knowing:**
+
+The old "12,598 ways" figure was `drivable + service` (reproduced exactly: 12,591). Service ways
+are parking aisles and driveways — **not streets an exam is driven on, and the player must not be
+able to drive them.** The real traversable network is **6,001**. Keep service ways as rule context
+only (the "leaving a driveway always yields" rule needs to know they exist), flagged
+`drivable: false`.
+
+Buildings came in at **69,538**, not the extrapolated ~46,700 (+49%). The 3.7–3.8x way/sign scale
+factor does **not** transfer to buildings — the outer ring loses road density faster than housing
+density. Don't scale building estimates by it.
 
 A full 5km radius stays **inside Berlin** on all 8 compass points (verified by reverse-geocoding;
 nearest Brandenburg town is ~7.3km out). This matters because Berlin's LoD2 buildings and the
@@ -67,9 +84,20 @@ The 3 missing LoD2 tiles (`LoD2_378_5816`, `LoD2_379_5816`, `LoD2_379_5817`) all
 over the Havel/Wannsee waterway — almost certainly "no buildings on open water", not a coverage
 failure.
 
-> **Extrapolated, NOT measured:** ~46,700 buildings, ~6,260 graph edges, ~5,500 junctions. These
-> come from applying the 3.7–3.8x factor, not from a real run. Phase 1 must replace them with
-> measured counts before any architecture is committed to. See PLAN.md Phase 1.
+> **Still extrapolated:** ~6,260 graph edges and ~5,500 junctions. Both were scaled from the
+> *service-inflated* way count, so both are likely well too high for a 6,001-way drivable network.
+> Phase 3 measures them directly.
+
+### Consequence for rendering — settled before Phase 5
+
+69,538 buildings as one `Mesh` each would mean ~69k draw calls, which will not hold 60fps. That
+collides with the "discrete, addressable buildings" property Path A is chosen for. Resolution:
+**batch buildings into per-chunk merged geometry carrying a per-building id as a vertex
+attribute.** Addressability is preserved (shader-side alpha for highlight/fade, or splitting out
+only the handful of buildings actually being faded) without paying per-building draw calls. This
+fits the graph-predictive chunking already agreed.
+
+Payload itself is a non-issue: ~5.6MB simplified, at the old build's ~84 bytes/building ratio.
 
 ## Data sources
 
@@ -93,8 +121,21 @@ lon,lat. Get it wrong and `numberMatched` silently comes back **0 — not an err
 single entry pointing at a **sub-feed**, `https://gdi.berlin.de/data/a_lod2/atom/0.atom`, which is
 what actually lists all 925 `LoD2_<E>_<N>` tiles. Fetch the sub-feed, not the top-level one.
 
+**Overpass returns HTTP 406 to the default `python-requests` user agent.** Any custom `User-Agent`
+header fixes it. Confirmed 2026-09-07 — this is separate from rate-limiting and looks nothing like
+it.
+
 **Overpass rate-limiting.** The public endpoint rate-limited mid-session during the old build. Use
-the mirror if it happens: `overpass.kumi.systems/api/interpreter`.
+the mirror if it happens: `overpass.kumi.systems/api/interpreter`. Note that on 2026-09-07 the
+*mirror* was rate-limiting (429) while the main endpoint worked — try both, in either order.
+
+**The LoD2 archives contain `.xml` files, not `.gml`.** Filtering an archive's contents on a
+`.gml` extension silently matches nothing and yields zero buildings with no error.
+
+**The LoD2 data is CityGML 1.0**, not 2.0 (`http://www.opengis.net/citygml/1.0` namespaces).
+`citygml-tools` targets 2.0/3.0 and needs a Java runtime that isn't installed here — so the
+pipeline parses the GML directly with streaming `lxml.etree.iterparse`, which the 1.57 GB
+uncompressed volume requires in any case.
 
 **Rules resolve per approach leg, not per junction.** "Junction X is rechts-vor-links" breaks
 wherever a Vorfahrtstraße crosses a residential street — two legs signposted, two not, at the same
