@@ -83,19 +83,21 @@ def triangulate(polygon: dict) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]
     ]
 
 
-def write_glb(path, positions: np.ndarray, building_ids: np.ndarray, indices: np.ndarray) -> int:
-    """Minimal glTF 2.0 binary: POSITION + _BUILDING + indices, one mesh."""
+def write_glb(path, positions: np.ndarray, building_ids: np.ndarray, roof_ids: np.ndarray, indices: np.ndarray) -> int:
+    """Minimal glTF 2.0 binary: POSITION + _BUILDING + _ROOF + indices."""
     pos_bytes = positions.astype(np.float32).tobytes()
     id_bytes = building_ids.astype(np.float32).tobytes()
+    roof_bytes = roof_ids.astype(np.float32).tobytes()
     idx_bytes = indices.astype(np.uint32).tobytes()
 
     def pad(data: bytes, fill: bytes = b"\x00") -> bytes:
         return data + fill * (-len(data) % 4)
 
-    buffer = pad(pos_bytes) + pad(id_bytes) + pad(idx_bytes)
+    buffer = pad(pos_bytes) + pad(id_bytes) + pad(roof_bytes) + pad(idx_bytes)
     pos_off = 0
     id_off = len(pad(pos_bytes))
-    idx_off = id_off + len(pad(id_bytes))
+    roof_off = id_off + len(pad(id_bytes))
+    idx_off = roof_off + len(pad(roof_bytes))
 
     gltf = {
         "asset": {"version": "2.0", "generator": "mytestdrive/build_buildings"},
@@ -103,7 +105,7 @@ def write_glb(path, positions: np.ndarray, building_ids: np.ndarray, indices: np
         "scenes": [{"nodes": [0]}],
         "nodes": [{"mesh": 0}],
         "meshes": [
-            {"primitives": [{"attributes": {"POSITION": 0, "_BUILDING": 1}, "indices": 2}]}
+            {"primitives": [{"attributes": {"POSITION": 0, "_BUILDING": 1, "_ROOF": 2}, "indices": 3}]}
         ],
         "buffers": [{"byteLength": len(buffer)}],
         "bufferViews": [
@@ -121,7 +123,8 @@ def write_glb(path, positions: np.ndarray, building_ids: np.ndarray, indices: np
                 "max": positions.max(axis=0).tolist(),
             },
             {"bufferView": 1, "componentType": 5126, "count": len(building_ids), "type": "SCALAR"},
-            {"bufferView": 2, "componentType": 5125, "count": len(indices), "type": "SCALAR"},
+            {"bufferView": 2, "componentType": 5126, "count": len(roof_ids), "type": "SCALAR"},
+            {"bufferView": 3, "componentType": 5125, "count": len(indices), "type": "SCALAR"},
         ],
     }
 
@@ -146,7 +149,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     chunks: dict[tuple[int, int], dict] = defaultdict(
-        lambda: {"verts": {}, "positions": [], "ids": [], "indices": [], "buildings": []}
+        lambda: {"verts": {}, "positions": [], "ids": [], "roofs": [], "indices": [], "buildings": []}
     )
 
     tiles = sorted((BUILD / "parsed").glob("*.json.gz"))
@@ -177,6 +180,7 @@ def main() -> None:
                     "parts": building.get("parts", 0),
                 }
             )
+            roof_id = float(str(building["roof_type"] or "0").split("-")[0])
 
             for triangle in triangles:
                 for point in triangle:
@@ -189,6 +193,7 @@ def main() -> None:
                         chunk["verts"][vkey] = existing
                         chunk["positions"].append((x, y, z))
                         chunk["ids"].append(local_index)
+                        chunk["roofs"].append(roof_id)
                     chunk["indices"].append(existing)
 
         if n % 20 == 0 or n == len(tiles):
@@ -199,9 +204,10 @@ def main() -> None:
     for (cx, cy), chunk in sorted(chunks.items()):
         positions = np.array(chunk["positions"], dtype=np.float32)
         ids = np.array(chunk["ids"], dtype=np.float32)
+        roofs = np.array(chunk["roofs"], dtype=np.float32)
         indices = np.array(chunk["indices"], dtype=np.uint32)
         name = f"chunk_{cx}_{cy}.glb"
-        size = write_glb(out_dir / name, positions, ids, indices)
+        size = write_glb(out_dir / name, positions, ids, roofs, indices)
         total_bytes += size
         total_verts += len(positions)
         total_tris += len(indices) // 3

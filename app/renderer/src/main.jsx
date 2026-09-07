@@ -74,8 +74,23 @@ function tintByAttribute(geometry, name, pick) {
 // One colour per building inside a merged chunk mesh, so neighbours stay readable
 // as separate volumes at one draw call per chunk.
 function tintBuildings(geometry) {
-  return tintByAttribute(geometry, '_BUILDING', (colour, id) =>
-    colour.setHSL((id * 0.191) % 1, 0.22, 0.55 + 0.14 * Math.sin(id)));
+  const ids = attribute(geometry, '_BUILDING');
+  const roofs = attribute(geometry, '_ROOF');
+  if (!ids || !roofs) return false;
+  const colours = new Float32Array(ids.count * 3);
+  const colour = new THREE.Color();
+  for (let index = 0; index < ids.count; index += 1) {
+    const roof = Math.round(roofs.getX(index));
+    const variation = 0.04 * Math.sin(ids.getX(index) * 0.37);
+    if (roof === 1000 || roof === 3100 || roof === 5000) colour.setRGB(0.53 + variation, 0.31 + variation, 0.22 + variation);
+    else if (roof === 2000 || roof === 2100) colour.setRGB(0.52 + variation, 0.53 + variation, 0.49 + variation);
+    else colour.setRGB(0.48 + variation, 0.50 + variation, 0.47 + variation);
+    colours[index * 3] = colour.r;
+    colours[index * 3 + 1] = colour.g;
+    colours[index * 3 + 2] = colour.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  return true;
 }
 
 function tintRoads(geometry) {
@@ -276,10 +291,12 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
   // The chunk GLBs deliberately ship no materials and no NORMAL attribute, so the
   // renderer supplies both. flatShading derives normals in the shader; without it these
   // meshes light as pure black. Same shading contract as tools/preview_chunk.html.
-  const buildingMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const roadMaterial = new THREE.MeshLambertMaterial({
+  const buildingMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88, metalness: 0 });
+  const roadMaterial = new THREE.MeshStandardMaterial({
     vertexColors: true,
     flatShading: true,
+    roughness: 0.96,
+    metalness: 0,
     // earcut winding on ground polygons is not guaranteed to face up.
     side: THREE.DoubleSide,
     // Markings sit ~4cm above the surface, which the depth buffer cannot resolve at
@@ -295,7 +312,7 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1
   });
-  const signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const signMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.55, metalness: 0.12 });
 
   const loader = new GLTFLoader();
   const loaded = new Set();
