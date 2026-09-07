@@ -1,0 +1,24 @@
+# Pipeline data — never committed. The 98 raw CityGML tiles are hundreds of MB
+# before simplification; build output is reproducible from the pipeline.
+data/raw/
+data/build/
+
+# Node / Electron
+node_modules/
+dist/
+out/
+*.log
+.npm/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
