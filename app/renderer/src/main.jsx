@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import './styles.css';
 
 const DATA = {
@@ -210,7 +211,14 @@ function makeScene(canvas, world, drive, onArrive, readoutRef) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#9db4b5');
+  const sky = new Sky();
+  sky.scale.setScalar(4500);
+  sky.material.uniforms.turbidity.value = 5;
+  sky.material.uniforms.rayleigh.value = 1.6;
+  sky.material.uniforms.mieCoefficient.value = 0.006;
+  sky.material.uniforms.mieDirectionalG.value = 0.82;
+  sky.material.uniforms.sunPosition.value.set(-1200, 900, 850);
+  scene.add(sky);
   scene.fog = new THREE.Fog('#9db4b5', 320, 1800);
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 2500);
 
