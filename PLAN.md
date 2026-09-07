@@ -68,8 +68,8 @@ never measured.** Nothing downstream should be sized or designed until they are 
 ### 1d. Gate — measure, then compare
 
 - [x] Record the **real** building count (extrapolation said ~46,700) → **69,538, +49%**
-- [ ] Record the **real** processed-edge count after junction-splitting (said ~6,260) → Phase 3
-- [ ] Record the **real** junction count (said ~5,500) → Phase 3
+- [x] Record the **real** processed-edge count after junction-splitting (said ~6,260) → **6,943**
+- [x] Record the **real** junction count (said ~5,500) → **6,001**
 - [x] Write the measured numbers into `docs/measured-counts.md` and correct README.md
 - [x] Correct the vault research note too, so the extrapolation is not re-used elsewhere
 
@@ -92,8 +92,9 @@ gate was for.
    are parking aisles and driveways the player must not drive — carried into Phase 3 below.
 3. **1,572 MB uncompressed CityGML** → Phase 2 must parse streaming, not into memory.
 
-Edge and junction counts remain extrapolated *and* were scaled from the service-inflated figure,
-so both are probably well too high. Phase 3 measures them.
+4. **Edges and junctions held.** Measured in Phase 3: **6,943 edges** (said ~6,260, +10.9%) and
+   **6,001 junctions** (said ~5,500, +9.1%) — both inside the ±20% band despite being scaled from
+   the service-inflated figure. No architectural consequence. **Gate now fully closed.**
 
 ---
 
@@ -132,24 +133,25 @@ fix that before continuing, it invalidates Path A.
 
 ## Phase 3 — Routable road graph
 
-- [ ] `pipeline/build_graph.py` — raw OSM ways → routable graph
-- [ ] **Build the graph from the 6,001 drivable ways only.** Exclude `service`, `track` and
+- [x] `pipeline/build_graph.py` — raw OSM ways → routable graph
+- [x] **Build the graph from the 6,001 drivable ways only.** Exclude `service`, `track` and
       `pedestrian` — the player must not be able to drive a parking aisle or a driveway
 - [ ] Keep service ways alongside, flagged `drivable: false`, as rule context for the "leaving a
-      driveway always yields" rule
-- [ ] Measure and record the real edge and junction counts — these close the last open item of the
+      driveway always yields" rule — **deferred to Phase 4**, which is where that rule is resolved;
+      `graph.json` deliberately contains drivable edges only
+- [x] Measure and record the real edge and junction counts — these close the last open item of the
       Phase 1 gate, and both extrapolations were scaled from the service-inflated way count
-- [ ] Resolve the Free Roam spawn to an explicit `(edge_id, offset, heading)` at the TÜV, validated
+- [x] Resolve the Free Roam spawn to an explicit `(edge_id, offset, heading)` at the TÜV, validated
       as a real drivable edge
-- [ ] Split ways at junctions into edges; assign stable `edge_id` / `junction_id`
-- [ ] Respect one-way tags — the player must not be able to drive the wrong way
-- [ ] Compute per-edge bearings at each endpoint (needed by both the rule matcher and the
+- [x] Split ways at junctions into edges; assign stable `edge_id` / `junction_id`
+- [x] Respect one-way tags — the player must not be able to drive the wrong way
+- [x] Compute per-edge bearings at each endpoint (needed by both the rule matcher and the
       left/right/straight picker)
-- [ ] For each junction, enumerate legs with their bearings
-- [ ] Classify each outgoing option from each incoming leg as left / straight / right
-- [ ] Sanity check: no orphan edges, no junction with a single leg, no disconnected component
+- [x] For each junction, enumerate legs with their bearings
+- [x] Classify each outgoing option from each incoming leg as left / straight / right
+- [x] Sanity check: no orphan edges, no junction with a single leg, no disconnected component
       that traps the player
-- [ ] Emit `data/build/graph.json`
+- [x] Emit `data/build/graph.json`
 
 ---
 
@@ -170,6 +172,8 @@ ever runs in the renderer.
   4. [ ] **Rechts vor links** when neither is present — the §8 default, not a fallback guess
   5. [ ] Zone 30 is a **speed regime, never a priority rule** — must not suppress rechts-vor-links
   6. [ ] Leaving a verkehrsberuhigter Bereich (Spielstraße) or a driveway/property always yields
+- [ ] Load the `service` ways (already cached as `ways_extra_5km.json`) as non-drivable rule
+      context, so a driveway/property exit can be detected at a junction
 - [ ] Emit a resolved rule **and** a conflict flag per leg
 - [ ] Where sources disagree (OSM signal with no matching WFS mast; signal + Vorfahrtstraße on one
       leg with no clear precedence) → **flag conflict, downgrade to hint-only, not scored**

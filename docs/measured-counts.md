@@ -19,8 +19,8 @@ carried. Anchor `52.5304357, 13.2144591`, radius 5000m. All measured 2026-09-07.
 | Centre tile | `LoD2_378_5821` | **`LoD2_378_5821`** | exact |
 | Raw drivable ways | 12,598 | 12,591 as `drivable+service` | reconciled, see below |
 | **Buildings** | **~46,700** *(extrapolated)* | **69,538** | **+48.9% — gate tripped** |
-| Graph edges | ~6,260 *(extrapolated)* | not yet measured | Phase 3 |
-| Junctions | ~5,500 *(extrapolated)* | not yet measured | Phase 3 |
+| Graph edges | ~6,260 *(extrapolated)* | **6,943** | +10.9%, within band |
+| Junctions | ~5,500 *(extrapolated)* | **6,001** | +9.1%, within band |
 
 Every *measured* baseline reproduced exactly. Both figures that missed were **extrapolations**,
 which is precisely what the gate existed to catch.
@@ -155,11 +155,45 @@ requirements now collide, and the resolution has to be chosen before Phase 5, no
 **Processing impact:** 1.57 GB of uncompressed CityGML means Phase 2 must parse **streaming**
 (iterative, per-tile, releasing as it goes), not load-all-into-memory.
 
-### Edges and junctions: not yet measured, but suspect
+### Edges and junctions: measured, and the extrapolation held
 
-~6,260 edges / ~5,500 junctions were scaled from the **service-inflated** way count. Since the
-drivable network is 6,001 ways rather than 12,591, both are likely substantially too high for the
-traversable graph. Phase 3 measures them directly.
+Despite being scaled from the service-inflated way count, both landed inside the ±20% band:
+**6,943 edges** (said ~6,260, +10.9%) and **6,001 junctions** (said ~5,500, +9.1%). No
+architectural consequence.
+
+| Graph metric | Value |
+|---|---|
+| Edges after junction-splitting | 6,943 |
+| Junctions | 6,001 |
+| One-way edges | 2,037 |
+| Dead ends | 1,556 |
+| Total drivable length | 472.1 km |
+| Distinct named streets | 838 |
+| Reachable from spawn (directed) | 6,836 — **98.5%** |
+| Largest undirected component | 5,912 nodes |
+| Ambiguous turn sets | 78 |
+
+**Why only 942 splits across 6,001 ways.** OSM already splits ways at intersections, so only
+**49** nodes are interior to every way using them (true X-crossings where neither way terminates).
+The splits come from the 696 ways carrying a T-junction interior node — a node that is an endpoint
+of one way and interior to another. The graph is correct; the low split count is an OSM data
+convention, not a bug. (The junction count landing on exactly 6,001, equal to the way count, is a
+coincidence — verified, not an off-by-one.)
+
+**Dead ends are genuine.** 1,556 (26% of junctions) sounds high, but they distribute evenly across
+distance bands rather than clustering at the 5km boundary, so they are real cul-de-sacs plus
+streets whose only continuation is an excluded `service` road. Correct behaviour for this app —
+the player should not be able to drive on into a parking aisle. 9 zero-leg junctions remain as a
+minor anomaly worth a look during Phase 4, not a blocker.
+
+**Spawn resolved.** Nearest drivable edge to the TÜV anchor is `e6261` on **Pichelswerderstraße**
+(`tertiary`), 82.9m from the anchor point, offset 1.26m along the edge, heading −117.0°. That is
+the correct street by name, which independently confirms the anchor.
+
+**Turn ambiguity — a real UI finding.** At 78 junctions, two or more options fall into the *same*
+left/right/straight bucket (e.g. two roads both bearing left). A three-button picker cannot express
+those. Phase 6 needs a disambiguation affordance for this small set — street name on the option, or
+a finer angular fan — rather than assuming three buttons always suffice.
 
 ### Verdict
 

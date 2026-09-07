@@ -20,12 +20,14 @@ from config import (
 
 AROUND = f"around:{RADIUS_M},{ANCHOR_LAT},{ANCHOR_LON}"
 
+# "out body geom" rather than "out geom": body carries the node id list, and shared
+# node ids are what identify junctions. Coordinates alone would need float matching.
 QUERY_DRIVABLE = f"""
 [out:json][timeout:600];
 way({AROUND})
   [highway~"{DRIVABLE_HIGHWAY_RE}"]
   [area!=yes];
-out geom tags;
+out body geom;
 """
 
 QUERY_EXTRA = f"""
