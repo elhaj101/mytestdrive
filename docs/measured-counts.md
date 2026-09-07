@@ -189,6 +189,74 @@ loader that never completes.
 
 ---
 
+## Phase 3b — road elevation
+
+Neither OSM nor the WFS roadway polygons carry elevation (verified: every `cm_fahrbahn`
+coordinate sampled had exactly two components). The LoD2 `GroundSurface` polygons do, and they
+were already parsed, so elevation needed no new download.
+
+| Metric | Value |
+|---|---|
+| Ground samples (deduped to a 2m grid) | **430,929** |
+| Sample z range | 28.1 – 112.9 m ASL |
+| Road z range after interpolation | 28.6 – 87.5 m ASL |
+| Spawn elevation | **32.0 m ASL** (TÜV sits near the Havel — plausible) |
+| Median grade | **0.49%** (Berlin is flat — as expected) |
+| Bridge edges / median grade | 69 / 1.24% |
+
+**Method: inverse-distance weighting over the 8 nearest ground samples.** A median estimator was
+tried and is *worse* on the only metric that matters — implausible grades: IDW 34, median-of-8 67,
+median-of-16 58. IDW kept.
+
+**Continuity is automatic.** Height is a pure function of (x, y), so two edges meeting at a
+junction always agree. Interior vertices get mild smoothing; endpoints are left untouched
+precisely to preserve that.
+
+**Bridges are run straight between their abutments** rather than following the ground beneath.
+Interpolating ground under a Havel crossing would dip the road to water level.
+
+### Quality: good where buildings are dense, weak in open ground
+
+| Nearest ground sample per junction | Distance |
+|---|---|
+| p50 | 14.9 m |
+| p90 | 33.8 m |
+| p99 | 93.5 m |
+| max | 1,346.6 m |
+
+Local agreement is the better quality signal: the height spread among the 8 neighbours used is
+**0.4 m at p50** and 1.8 m at p90. Only 0.3% of junctions exceed 10 m.
+
+**34 edges come out steeper than 15%, and they are artefacts, not hills.** 22 of them are under
+20 m long (median 16.5 m against 39.8 m for all edges), so a small height difference becomes a
+large percentage. The worst case — Heerstraße, 84.6% over 29 m — is not estimator noise: both
+endpoints have *confident* estimates (all 8 neighbours agreeing within 0.1 m) but their nearest
+buildings are 50–70 m away on opposite sides of a genuine terrain step. The road between them has
+no buildings near it to sample.
+
+### Low-confidence data is flagged, not silently smoothed
+
+Following the project's standing rule that inference is a hint and never a verdict:
+
+- `junction.z_confident = false` where the nearest sample is >50 m away or the neighbour spread
+  exceeds 5 m → **265 junctions (4.4%)**
+- `edge.grade_suspect = true` where |grade| > 12% → **62 edges (0.9%)**
+
+Phase 5/6 can smooth, clamp or ignore those rather than trusting them blindly.
+
+**The proper fix, if it ever matters, is Berlin's DGM terrain model.** It is not at the obvious
+GDI endpoints (`/services/wfs/dgm`, `/services/wcs/dgm`, `/data/a_dgm/atom/0.atom` all 404), so
+finding it is a small research task deferred until the flagged 0.9% actually proves annoying in
+the app.
+
+### Verified visually
+
+The preview renders the road graph at its own interpolated height with **no ground plane** — a
+hardcoded one would hide exactly this bug. Roads sit at building-base level and thread correctly
+between buildings; the city does not float.
+
+---
+
 ## Gate assessment
 
 ### Buildings: +48.9% over extrapolation

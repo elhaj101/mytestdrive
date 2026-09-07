@@ -101,13 +101,27 @@ for (const [cx, cy] of cells) {
   }, undefined, () => { loaded++; });
 }
 
-// Ground plane so buildings do not float in a void.
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(6000, 6000),
-  new THREE.MeshLambertMaterial({ color: 0x1a1f2b })
-);
-ground.position.z = 32;
-scene.add(ground);
+// The road graph, drawn at its own interpolated elevation. No ground plane:
+// a hardcoded one would hide exactly the bug this is meant to expose.
+fetch('../data/build/graph.json').then(r => r.json()).then((graph) => {
+  const ok = [], suspect = [];
+  for (const edge of graph.edges) {
+    const target = edge.grade_suspect ? suspect : ok;
+    for (let i = 0; i < edge.points.length - 1; i++) {
+      const a = edge.points[i], b = edge.points[i + 1];
+      target.push(a[0], a[1], a[2] + 0.2, b[0], b[1], b[2] + 0.2);
+    }
+  }
+  for (const [verts, colour] of [[ok, 0x6fd3a0], [suspect, 0xff5a4d]]) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    scene.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: colour })));
+  }
+  const spawn = graph.spawn;
+  document.getElementById('stats').textContent +=
+    ` · roads z-aware · spawn z=${spawn.z}m`;
+  window.SPAWN_Z = spawn.z;
+});
 
 window.view = (mode) => {
   const rad = SPAWN.heading * Math.PI / 180;

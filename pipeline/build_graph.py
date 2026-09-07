@@ -139,6 +139,11 @@ def build() -> dict:
                         "name": tags.get("name", ""),
                         "maxspeed": tags.get("maxspeed", ""),
                         "zone_maxspeed": tags.get("zone:maxspeed", ""),
+                        # Needed by the elevation stage: a bridge deck is not at ground level,
+                        # and a tunnel is below it.
+                        "bridge": tags.get("bridge", ""),
+                        "tunnel": tags.get("tunnel", ""),
+                        "layer": tags.get("layer", ""),
                     }
                 )
             start = i

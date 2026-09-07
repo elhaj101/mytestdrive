@@ -180,15 +180,17 @@ Phase 2 preview hid this by hardcoding a ground plane at z=32.
 **This does not block Phase 4** — the rule engine is pure 2D bearing maths and is unaffected.
 It blocks Phase 5.
 
-- [ ] Sample elevation from the **103,997 `GroundSurface` polygons already parsed** — their z is
+- [x] Sample elevation from the **103,997 `GroundSurface` polygons already parsed** — their z is
       exactly the ground height at each building's footprint, they are dense (~3,000 points in a
       single tile), already on disk, and need no new fetch
-- [ ] Interpolate onto every graph node (nearest-neighbour or IDW); accuracy well inside what a
+- [x] Interpolate onto every graph node (nearest-neighbour or IDW); accuracy well inside what a
       driving-height camera needs
-- [ ] Add `z` to every edge polyline point, so an edge is a 3D path
-- [ ] Sanity-check against known slopes — the Havel bridges should rise, not step
-- [ ] Fall back to Berlin's DGM terrain model via the same GDI portal only if the GroundSurface
-      sampling proves too coarse; it is more correct but costs another fetch stage
+- [x] Add `z` to every edge polyline point, so an edge is a 3D path
+- [x] Sanity-check against known slopes — the Havel bridges should rise, not step
+- [ ] **Deferred, not done:** Berlin's DGM terrain model. It is not at the obvious GDI endpoints
+      (`/services/wfs/dgm`, `/services/wcs/dgm`, `/data/a_dgm/atom/0.atom` all return 404), so
+      locating it is a small research task. Worth doing only if the flagged 0.9% of edges actually
+      proves annoying in the app
 
 ---
 
@@ -341,7 +343,7 @@ Phase 0  skeleton ......................... DONE
 Phase 1  fetch + MEASURE .................. DONE — gate tripped on buildings, resolved
 Phase 2  geometry, Path A ................. DONE — roofs verified real in Three.js
 Phase 3  road graph ....................... DONE — 6,943 edges / 6,001 junctions
-Phase 3b road elevation ................... TODO — blocks Phase 5, not Phase 4
+Phase 3b road elevation ................... DONE — IDW over LoD2 ground, low confidence flagged
 Phase 4  rule engine ...................... validate on 2 known junctions
 Phase 5  Electron spike ................... GATE: numeric bar, then stop rule
          ├── 5a Tauri  (only if size/cold-start matters)

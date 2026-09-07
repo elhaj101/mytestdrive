@@ -12,6 +12,7 @@ packaging==26.3
 pygltflib==1.16.5
 pyproj==3.8.0
 requests==2.34.2
+scipy==1.18.1
 shapely==2.1.2
 trimesh==5.1.0
 typing-inspect==0.9.0
