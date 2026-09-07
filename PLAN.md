@@ -166,6 +166,32 @@ own colour inside a single merged mesh, confirming addressability survives the m
 
 ---
 
+## Phase 3b — Road elevation  *(new stage, found 2026-09-07)*
+
+**The graph is 2D and the buildings are not.** `build_graph.py` emits `points: [[x, y], …]` with no
+elevation, while buildings carry absolute height above sea level (29–128m across the area, 34–80m
+within a single chunk). Verified: OSM has no elevation, and the WFS `cm_fahrbahn` roadway polygons
+are 2D as well — every coordinate sampled had exactly two components. So **nothing in the pipeline
+currently knows the ground height of a road.**
+
+Left unfixed, Phase 5's rail-locked camera sits at z=0 while the city floats 30–80m overhead. The
+Phase 2 preview hid this by hardcoding a ground plane at z=32.
+
+**This does not block Phase 4** — the rule engine is pure 2D bearing maths and is unaffected.
+It blocks Phase 5.
+
+- [ ] Sample elevation from the **103,997 `GroundSurface` polygons already parsed** — their z is
+      exactly the ground height at each building's footprint, they are dense (~3,000 points in a
+      single tile), already on disk, and need no new fetch
+- [ ] Interpolate onto every graph node (nearest-neighbour or IDW); accuracy well inside what a
+      driving-height camera needs
+- [ ] Add `z` to every edge polyline point, so an edge is a 3D path
+- [ ] Sanity-check against known slopes — the Havel bridges should rise, not step
+- [ ] Fall back to Berlin's DGM terrain model via the same GDI portal only if the GroundSurface
+      sampling proves too coarse; it is more correct but costs another fetch stage
+
+---
+
 ## Phase 4 — Rule-conflict engine
 
 Pure Python, build-time only. Runs once and bakes results into per-junction data — no StVO logic
@@ -311,10 +337,11 @@ merely scored lower.
 ## Sequencing summary
 
 ```
-Phase 0  skeleton ......................... done, bar the venv
-Phase 1  fetch + MEASURE .................. GATE: replaces extrapolated numbers
-Phase 2  geometry, Path A ................. checkpoint: roofs must look real
-Phase 3  road graph
+Phase 0  skeleton ......................... DONE
+Phase 1  fetch + MEASURE .................. DONE — gate tripped on buildings, resolved
+Phase 2  geometry, Path A ................. DONE — roofs verified real in Three.js
+Phase 3  road graph ....................... DONE — 6,943 edges / 6,001 junctions
+Phase 3b road elevation ................... TODO — blocks Phase 5, not Phase 4
 Phase 4  rule engine ...................... validate on 2 known junctions
 Phase 5  Electron spike ................... GATE: numeric bar, then stop rule
          ├── 5a Tauri  (only if size/cold-start matters)
