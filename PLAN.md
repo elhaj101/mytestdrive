@@ -13,7 +13,7 @@ Radius: 5km. Center LoD2 tile: `LoD2_378_5821`.
 
 ## Where this stands — 2026-09-07
 
-**The data pipeline is complete and verified. No app code exists yet.**
+**The pipeline is complete and verified. Free Roam is playable and the Phase 5 gate clears.**
 
 | Phase | State | Result |
 |---|---|---|
@@ -25,11 +25,17 @@ Radius: 5km. Center LoD2 tile: `LoD2_378_5821`.
 | Roads + markings *(Phase 6, pulled forward)* | **done** | 771,740 triangles, 88,374 marking segments |
 | 4 — Rule engine | **done** | 11,844 approaches, both acceptance junctions pass |
 | 5 — Electron spike ← gate | **done** | gate CLEARS: 59.9fps full payload, 0.84s cold start |
-| 6 — The app | not started | |
-| 7 — Modes | blocked | open decision #1 |
+| 6 — The app | **in progress** | drivable end to end; 4 items open |
+| 7 — Modes | Free Roam **done** | Exam Simulation deferred by decision |
 
-Nine pipeline stages exist under `pipeline/`. What does not exist is the Electron app that drives
-through the world they produce.
+Nine pipeline stages exist under `pipeline/`, and the Electron app that drives through the world
+they produce now runs: TÜV spawn, ring-streamed chunks, a resolved rule on every approach it
+enters, 59.9fps with all 992 chunks resident.
+
+**Phase 6's four open items:** sign geometry (no `build_signs.py` exists, so none of the 16,342
+surveyed signs appear in the world), junction clustering, lane markings as textured quads, and a
+smooth heading transition through a turn. Renderer/pipeline contract and the defects it has
+already cost: [docs/app-notes.md](docs/app-notes.md).
 
 **Four design assumptions failed on measurement and were replaced** — each recorded inline below
 rather than quietly corrected: the building extrapolation (+49%), the "12,598 ways" figure
@@ -390,10 +396,20 @@ merely scored lower.
       **Lookup only — no rule computation at runtime**
 - [ ] **Cluster junction nodes that are one real intersection.** Tiefwerderweg × Schulenburgstraße
       is 5 graph nodes (a one-way pair layout). Without clustering, the player is asked for several
-      direction choices while crossing what they see as a single junction
-- [ ] **Disambiguate the 78 ambiguous turn sets** — junctions where two options fall in the same
-      left/right/straight bucket. Three buttons cannot express those; show the street name on the
-      option or use a finer angular fan
+      direction choices while crossing what they see as a single junction.
+      **Partly absorbed already:** the app drives through single-option nodes rather than
+      prompting (6,528 such approaches against 3,957 with a real choice), so a clustered junction
+      only prompts more than once where its interior nodes genuinely branch. Measure how many of
+      the 5 Tiefwerderweg nodes still prompt before designing the clustering
+- [~] **Disambiguate the 78 ambiguous turn sets** — junctions where two options fall in the same
+      left/right/straight bucket. **Half done, and the remainder is now measured.** The panel no
+      longer has three fixed buttons: it renders one button per actual option, labelled with the
+      street it leads to, which is the plan's "show the street name" fix. That resolves 50 of the
+      80 duplicated-label approaches. **The other 30 have the same street name on both options**
+      (`j313525286` offers "straight → Daumstraße" twice; `j26904555` offers "left → Heerstraße"
+      twice) and are still indistinguishable to the driver. Those need the angular fan — the
+      `relative` bearing is already in the turn table and separates them cleanly (+24.5° vs −0.6°
+      on `j11426958630`)
 - [x] Render hint-only legs visibly differently from scored ones — the distinction is a core
       correctness promise of the app, not a UI detail
 - [ ] Sign faces from Wikimedia Commons SVGs, instanced
@@ -442,10 +458,14 @@ Phase 2  geometry, Path A ................. DONE — roofs verified real in Thre
 Phase 3  road graph ....................... DONE — 6,943 edges / 6,001 junctions
 Phase 3b road elevation ................... DONE — IDW over LoD2 ground, low confidence flagged
 Phase 4  rule engine ...................... DONE — both known junctions validate
-Phase 5  Electron spike ................... GATE: numeric bar, then stop rule
-         ├── 5a Tauri  (only if size/cold-start matters)
-         └── 5b Godot  (only if fps missed)
-Phase 6  build the app
+Phase 5  Electron spike ................... DONE — gate CLEARS all four numbers
+         ├── 5a Tauri  ...................... unnecessary, not pending
+         └── 5b Godot  ...................... unnecessary (fps miss was fill rate, not culling)
+Phase 6  build the app .................... IN PROGRESS — drivable; 4 items open
+         ├── signs (no build_signs.py yet) .. largest remaining unit
+         ├── junction clustering ............ partly absorbed by single-option pass-through
+         ├── markings as textured quads ..... needs a build_roads.py change + re-run
+         └── smooth heading through a turn .. renderer only
 Phase 7  Free Roam ........................ DONE — starts at the TÜV spawn
 ```
 

@@ -10,7 +10,7 @@ streets, real signs, real right-of-way — by driving it.
 
 ## Status — 2026-09-07
 
-**The data pipeline is complete and verified. The app itself is not built yet.**
+**The pipeline is complete and verified. Free Roam is playable and the Phase 5 gate clears.**
 
 | Phase | State |
 |---|---|
@@ -21,17 +21,25 @@ streets, real signs, real right-of-way — by driving it.
 | 3b — Road elevation | done, low-confidence areas flagged |
 | 4 — Rule engine | done, both acceptance junctions validate |
 | Road surfaces + markings | done (Phase 6 work pulled forward) |
-| 5 — Electron spike (**gate**) | **not started** — next |
-| 6 — The app | not started |
-| 7 — Free Roam / Exam modes | blocked on an open decision |
+| 5 — Electron spike (**gate**) | **done** — gate clears on all four numbers |
+| 6 — The app | **in progress** — drivable; signs, junction clustering and marking quads open |
+| 7 — Free Roam / Exam modes | Free Roam done; Exam Simulation deferred |
 
 Everything the world needs is built: 69,538 buildings with real roofs, a 6,943-edge routable
 graph with elevation, surveyed road surfaces and lane markings, and right-of-way resolved for
-all 11,844 approaches. What does not exist yet is the Electron app that drives through it.
+all 11,844 approaches. The Electron app drives through it: it spawns at the TÜV, streams the
+real chunks, resolves the rule for every approach it enters, and clears the Phase 5 numeric bar
+at 59.9fps with the whole 5km world resident.
+
+**What Phase 6 still owes:** sign geometry (the 16,342 surveyed signs have no `build_signs.py`
+and so appear nowhere in the world), clustering the junction nodes that are one real
+intersection, lane markings as textured quads rather than hairlines, and a smooth heading
+transition through a turn.
 
 Full research and reasoning lives outside this repo, in the Brain vault:
 `4-Resources/mytestdrive-5km-desktop-research.md`. Detailed measurements and every reconciliation:
-[docs/measured-counts.md](docs/measured-counts.md). Phase checklist: [PLAN.md](PLAN.md).
+[docs/measured-counts.md](docs/measured-counts.md). Renderer contract, the defects it cost, and
+the gate numbers: [docs/app-notes.md](docs/app-notes.md). Phase checklist: [PLAN.md](PLAN.md).
 
 ## Running the pipeline
 
@@ -43,16 +51,30 @@ cd pipeline
 
 ## Running the Free Roam app
 
-The Electron/Three.js spike starts every session on the resolved TÜV spawn and loads the real
-building and road chunks for the current and candidate edges.
+Starts every session on the resolved TÜV spawn and streams the real building, road-surface and
+marking chunks in a ring around the driver.
 
 ```bash
 npm install
 npm start
 ```
 
-The camera is rail-locked to the graph. Use the left, straight or right choice at each junction;
-the side panel reads the precomputed rule and distinguishes scored rules from hint-only conflicts.
+> **If a window never appears, check `ELECTRON_RUN_AS_NODE`.** Set to `1`, Electron runs as plain
+> Node: no window, no error, exit code 0. VSCode's integrated terminal exports it and `npm start`
+> inherits it. Launch with `env -u ELECTRON_RUN_AS_NODE npm start`.
+
+The car drives itself along the rail at the edge's speed limit and stops where there is a real
+choice; nodes with a single continuation are driven through rather than prompting, because 6,528
+of the reachable approaches have exactly one option against 3,957 that have more. The panel names
+the street being entered and states the rule for the junction ahead, distinguishing scored rules
+from hint-only conflicts. Every option is its own button labelled with the street it leads to, so
+the 78 junctions whose turns fall in the same left/right/straight bucket stay distinguishable.
+
+Re-measure the Phase 5 gate at any time:
+
+```bash
+env -u ELECTRON_RUN_AS_NODE ./node_modules/.bin/electron tools/measure_gate.cjs
+```
 
 Stages, in dependency order. Every fetch stage caches to `data/raw/`, so re-runs cost nothing;
 pass `--force` to refetch.
@@ -277,6 +299,30 @@ error. Descend for surface elements, and always assert the parsed count against 
 Reading the original name gives `undefined` and throws *inside the load callback*, which surfaces
 as no console error, no failed request — just a loader that never completes.
 
+**A glTF primitive with no material gets `metallicFactor: 1.0`.** That is the spec default, and
+a fully metallic surface with no environment map reflects nothing — three.js renders it black.
+Up-facing geometry catches enough hemisphere light to look lit, so the symptom is *walls black,
+roofs and roads fine*, which reads like a texture bug and is not one. The chunk GLBs here ship
+no materials at all by design; the renderer supplies them.
+
+**The pipeline is Z-up, three.js is Y-up, and the GLBs are already in world coordinates.**
+Convert once, on a parent group (`rotation.x = -Math.PI / 2`), and make the camera use the
+identical mapping. Convert one and not the other and the streets and the buildings occupy
+different worlds — silently, since both still render.
+
+**`graph.json` keys turns by `"<edgeId>:<direction>"`, and edges carry no `turn` property.**
+A position in this world is an edge *plus* a direction of travel: the arrival junction, the rule
+and the polyline order all flip with it. Tracking only the edge cannot express driving a two-way
+street backwards.
+
+**Junction ids carry a `j` prefix; edge endpoints do not.** `rules.json` keys look like
+`j13418555801|e6261` while `edge.to` is `13418555801`. Build the key from the bare id and all
+11,844 lookups miss — indistinguishable from "no special rule here".
+
+**`ELECTRON_RUN_AS_NODE=1` makes Electron run as plain Node.** No window, no error, exit code 0.
+VSCode's integrated terminal exports it and everything launched from there inherits it, including
+`npm start`. Looks exactly like an app that starts and does nothing.
+
 **A 0×0 canvas renders black with no error.** `innerWidth`/`innerHeight` can be 0 when a module
 script first runs, and `renderer.setSize(0, 0)` fails silently.
 
@@ -322,13 +368,15 @@ pipeline/             Python. Fetch + build. Independent of the renderer/UI stac
   fetch_*.py          Stages 1-3
   parse_citygml.py    Streaming CityGML 1.0 parser
   build_*.py          Stages 5-9
-app/main/             Electron main process — not written yet
-app/renderer/world/   Three.js scene — not written yet
-app/renderer/ui/      React side panel, direction picker, HUD — not written yet
-tools/                preview_chunk.html — verification viewer, not part of the app
+app/main/             Electron main process — window, and the asset-read IPC bridge
+app/renderer/src/     The app: Three.js world, React panel, traversal, chunk streaming
+tools/                preview_chunk.html  — verification viewer, not part of the app
+                      measure_gate.cjs    — Phase 5 gate, boots and drives the real app
 data/raw/             Downloaded source data — gitignored
 data/build/           Generated artifacts — gitignored, reproducible
-docs/                 measured-counts.md — every measurement and reconciliation
+docs/                 measured-counts.md — every pipeline measurement and reconciliation
+                      app-notes.md       — renderer/pipeline contract and gate reasoning
+                      gate-phase5.json   — raw gate output
 ```
 
 `data/` is deliberately not committed: raw CityGML runs to 182 MB zipped, and everything in
@@ -357,5 +405,6 @@ docs/                 measured-counts.md — every measurement and reconciliatio
 
 ## Repository
 
-Local-first, by design. There is no remote yet — the remote will be created *from* this folder
-when the time comes, not the other way around.
+Local-first by design, and the remote was created *from* this folder rather than the other way
+around: `github.com/elhaj101/mytestdrive`, `main`. `data/` stays out of it — raw CityGML runs to
+182 MB zipped and everything in `data/build/` is reproducible by re-running the pipeline.
